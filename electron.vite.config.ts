@@ -12,6 +12,12 @@ import vitePlugin from 'unplugin-vue-components/vite';
 import { downloadLibopencorJsIfNeeded } from './src/renderer/scripts/download.libopencor.js.ts';
 import { libopencorVersion, opencorVersion } from './src/renderer/scripts/libopencor.version.ts';
 import { stripPrimeIconsFontFacePlugin } from './src/renderer/scripts/primeicons.plugin.ts';
+import { primeVueCssPlugin } from './src/renderer/scripts/primevue.css.plugin.ts';
+import {
+  OPENCOR_CUSTOM_ELEMENT_COMPONENTS,
+  shadowCssPlugin,
+  shadowStyleNodeTransform
+} from './src/renderer/scripts/shadow.css.plugin.ts';
 
 const rendererPublicDir = path.join(import.meta.dirname, 'src', 'renderer', 'public');
 
@@ -61,7 +67,17 @@ export default electronVite.defineConfig({
       },
       tailwindcssPlugin(),
       stripPrimeIconsFontFacePlugin(),
+      shadowCssPlugin(),
+      primeVueCssPlugin(),
       vuePlugin({
+        features: {
+          customElement: OPENCOR_CUSTOM_ELEMENT_COMPONENTS
+        },
+        template: {
+          compilerOptions: {
+            nodeTransforms: [shadowStyleNodeTransform]
+          }
+        },
         script: {
           fs: {
             fileExists: (file: string) => fs.existsSync(file),

@@ -1,5 +1,7 @@
 import { createApp } from 'vue';
 
+import './demo.css';
+
 import App from './App.vue';
 // import App from './AppWithinContainers.vue';
 // import App from './AppWithMultipleInstances.vue';

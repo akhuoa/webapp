@@ -103,10 +103,11 @@ If you would rather not fetch `libopencor.js` from `https://opencor.ws`, then yo
 
 OpenCOR accepts the following props:
 
-| Name    | Type                                | Default    | Description                                                                             |
-| ------- | ----------------------------------- | ---------- | --------------------------------------------------------------------------------------- |
-| `omex`  | `string` \| `Uint8Array`            | `null`     | The [OMEX file](https://combinearchive.org/) to use, as a URL string or raw OMEX bytes. |
-| `theme` | `'light'` \| `'dark'` \| `'system'` | `'system'` | The theme to use.                                                                       |
+| Name       | Type                                | Default    | Description                                                                                                                  |
+| ---------- | ----------------------------------- | ---------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `omex`     | `string` \| `Uint8Array`            | `null`     | The [OMEX file](https://combinearchive.org/) to use, as a URL string or raw OMEX bytes.                                      |
+| `theme`    | `'light'` \| `'dark'` \| `'system'` | `'system'` | The theme to use. It can be changed at any time (e.g., to follow the light/dark mode of your application, see below).        |
+| `hostFont` | `boolean`                           | `false`    | Whether to use the font of your application for OpenCOR's UI. OpenCOR's graphs always use their own font, so that their layout doesn't change. |
 
 - **main.ts:**
 
@@ -131,7 +132,6 @@ When no `omex` prop is provided, the component gives access to all of OpenCOR's 
 
 <script setup lang="ts">
 import OpenCOR from '@opencor/opencor';
-import '@opencor/opencor/style.css';
 </script>
 ```
 
@@ -148,9 +148,29 @@ When an `omex` prop is provided, the component goes straight into OpenCOR's simu
 
 <script setup lang="ts">
 import OpenCOR from '@opencor/opencor';
-import '@opencor/opencor/style.css';
 </script>
 ```
+
+### Following the light/dark mode of your application
+
+The `theme` prop is reactive, so OpenCOR can follow the light/dark mode of your application, whether the user toggles it or it is based on the system's settings. For instance, using [VueUse](https://vueuse.org/core/useDark/)'s `useDark()`:
+
+- **App.vue:**
+
+```vue
+<template>
+  <OpenCOR :theme="isDark ? 'dark' : 'light'" />
+</template>
+
+<script setup lang="ts">
+import OpenCOR from '@opencor/opencor';
+import { useDark } from '@vueuse/core';
+
+const isDark = useDark();
+</script>
+```
+
+Each instance of OpenCOR has its own theme, so different instances can use different themes.
 
 - **Exposed methods:**
 
@@ -161,5 +181,18 @@ import '@opencor/opencor/style.css';
   - `untrackAllSimulationData()`: clears the list of tracked simulation data.
 
   A parameter name is a string that identifies a parameter in the model and consists of the component in which the parameter is located and the name of the parameter itself, separated by a slash. For instance, `main/x` identifies the `x` parameter in the `main` component.
+
+### Style isolation
+
+OpenCOR renders itself within a [shadow root](https://developer.mozilla.org/en-US/docs/Web/API/Web_components/Using_shadow_DOM), so:
+
+- your application's styles (e.g., those of a UI framework like Element Plus or of a documentation site like VitePress) don't affect OpenCOR; and
+- OpenCOR's styles (including those of PrimeVue, which OpenCOR uses with its own theme) don't affect your application.
+
+This means that:
+
+- OpenCOR's styles are injected into its shadow root, so there is no need to import `@opencor/opencor/style.css` anymore (it is now an empty file, which is only kept for backward compatibility);
+- OpenCOR's internals cannot be restyled from your application; and
+- OpenCOR's only styles in your application's document are a `@font-face` rule for [PrimeIcons](https://primevue.org/icons/) (since `@font-face` rules don't apply within a shadow root in all browsers) and a rule that never matches anything, but which PrimeVue needs to position its overlays.
 
 [![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/opencor/webapp)

@@ -212,8 +212,6 @@ import { useOpenCORContext } from '../OpenCORContext';
 import GraphPanelWidget from '../widgets/GraphPanelWidget.vue';
 import type { IGraphPanelData, IGraphPanelMargins, IGraphPanelPlotTrace } from '../widgets/GraphPanelWidget.vue';
 
-import './simulation-experiment-view.css';
-
 interface ISimulationRun {
   id: string;
   inputParameters: Record<string, number>;

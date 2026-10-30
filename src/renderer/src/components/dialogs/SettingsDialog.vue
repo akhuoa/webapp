@@ -33,8 +33,9 @@ const emit = defineEmits<{
 
 const { themeCanBeChanged } = useOpenCORContext();
 
+const opencorTheme = vueCommon.useTheme();
 const checkForUpdatesAtStartup = vue.ref(settings.general.checkForUpdatesAtStartup);
-const theme = vue.ref<OpenCORTheme>(vueCommon.useTheme().theme());
+const theme = vue.ref<OpenCORTheme>(opencorTheme.theme());
 
 const initialiseDialog = () => {
   // Note #1: we can come here as a result of hiding the dialog and this in case the dialog gets opened multiple times.
@@ -44,7 +45,7 @@ const initialiseDialog = () => {
   //          our settings were edited by hand).
 
   checkForUpdatesAtStartup.value = settings.general.checkForUpdatesAtStartup;
-  theme.value = vueCommon.useTheme().theme();
+  theme.value = opencorTheme.theme();
 };
 
 settings.onInitialised(() => {
@@ -57,7 +58,7 @@ const onThemeSwitch = (newTheme: OpenCORTheme) => {
 
   theme.value = newTheme;
 
-  vueCommon.useTheme().applyTheme(newTheme);
+  opencorTheme.applyTheme(newTheme);
 };
 
 const onOk = () => {
@@ -77,7 +78,7 @@ const onHide = () => {
   // on OK (since our settings will have been updated by then).
 
   if (themeCanBeChanged) {
-    vueCommon.useTheme().applyTheme(settings.general.theme);
+    opencorTheme.applyTheme(settings.general.theme);
   }
 
   initialiseDialog();

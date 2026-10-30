@@ -533,7 +533,7 @@ export class MainWindow extends ApplicationWindow {
 
     // Disable our main menu.
     // Note: our renderer enables/disables our main menu depending on whether its UI is enabled (see compUiEnabled in
-    //       src/renderer/src/components/OpenCOR.vue), so we keep it disabled until then. Otherwise, it could be used
+    //       src/renderer/src/components/OpenCORCore.vue), so we keep it disabled until then. Otherwise, it could be used
     //       before our renderer is able to handle it (e.g., while it is being loaded or initialised).
 
     enableDisableMainMenu(false);

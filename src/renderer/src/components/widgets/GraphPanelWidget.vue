@@ -1,5 +1,5 @@
 <template>
-  <div ref="rootRef" class="flex flex-row h-full">
+  <div ref="rootRef" class="graph-panel-widget flex flex-row h-full">
     <div v-if="showMarker" class="w-0.75 bg-primary" />
     <div ref="mainDivRef" class="grow h-full min-w-0 relative overflow-hidden"
       :style="{
@@ -274,6 +274,12 @@ defineExpose({
 
 const instanceId = Symbol('GraphPanelWidget');
 const rootRef = vue.shallowRef<HTMLElement | null>(null);
+
+// Resolve the given colour (see colors.cssColor()) against our root element, i.e. within our shadow root.
+
+const cssColor = (color: string): string => {
+  return colors.cssColor(color, rootRef.value);
+};
 const mainDivRef = vue.shallowRef<HTMLElement | null>(null);
 const plotDivRef = vue.shallowRef<HTMLElement | null>(null);
 const legendRef = vue.shallowRef<HTMLElement | null>(null);
@@ -294,10 +300,10 @@ let marginsUpdatePending = false;
 let trackedMargins: IGraphPanelMargins | undefined;
 
 // Our theme, which uses PrimeVue's CSS variables, so that it is consistent with the rest of OpenCOR.
-// Note: a canvas doesn't understand CSS variables, so we resolve them (see colors.cssColor()) for what gets drawn on
+// Note: a canvas doesn't understand CSS variables, so we resolve them (see cssColor()) for what gets drawn on
 //       uPlot's canvas (i.e. our grid lines, zero lines, and tick labels). This is fine since we resolve them whenever
 //       our plot gets created (which it does whenever our theme changes, see updatePlot()) or drawn, and PrimeVue's CSS
-//       variables get updated as soon as our theme changes (see useTheme() in vueCommon.ts). We also resolve them for
+//       variables get updated as soon as our theme changes (see provideTheme() in vueCommon.ts). We also resolve them for
 //       our exports (see svgDocument()) since our CSS variables are not available to them.
 
 interface IThemeColors {
@@ -908,7 +914,7 @@ const svgDocument = (scale: number = 1): ISvgDocument => {
     `<svg xmlns="http://www.w3.org/2000/svg" width="${scaledWidth}" height="${scaledHeight}" viewBox="0 0 ${scaledWidth} ${scaledHeight}">`,
     `<clipPath id="traces"><rect x="${svgNumber(left - 0.5 * traceLineWidth)}" y="${svgNumber(top - 0.5 * traceLineWidth)}" width="${svgNumber(width + traceLineWidth)}" height="${svgNumber(height + traceLineWidth)}"/></clipPath>`,
     `<clipPath id="markers"><rect x="${svgNumber(left)}" y="${svgNumber(top)}" width="${svgNumber(width)}" height="${svgNumber(height)}"/></clipPath>`,
-    `<rect width="${scaledWidth}" height="${scaledHeight}" fill="${colors.cssColor(themeColors.value.background)}"/>`
+    `<rect width="${scaledWidth}" height="${scaledHeight}" fill="${cssColor(themeColors.value.background)}"/>`
   ];
 
   // Our minor and major grid lines, and our zero lines, which get drawn in that order on uPlot's canvas (see
@@ -925,7 +931,7 @@ const svgDocument = (scale: number = 1): ISvgDocument => {
 
     linesPath(path, xValues, yValues, area, withinPlottingArea);
 
-    return svgPathElement(path, `stroke="${colors.cssColor(color)}" stroke-width="${lineWidth(scale)}" fill="none"`);
+    return svgPathElement(path, `stroke="${cssColor(color)}" stroke-width="${lineWidth(scale)}" fill="none"`);
   };
 
   res.push(
@@ -976,7 +982,7 @@ const svgDocument = (scale: number = 1): ISvgDocument => {
   );
 
   res.push(
-    `<g font-family="${escapeXml(FONT_FAMILY)}" font-size="${TICK_FONT_SIZE}" fill="${colors.cssColor(themeColors.value.text)}">${svgTickLabels.join('')}</g>`
+    `<g font-family="${escapeXml(FONT_FAMILY)}" font-size="${TICK_FONT_SIZE}" fill="${cssColor(themeColors.value.text)}">${svgTickLabels.join('')}</g>`
   );
 
   // Our axis titles and legend, which we render on top of our plot.
@@ -2193,8 +2199,12 @@ const onRangeEditorKeyDown = (event: KeyboardEvent): void => {
 
 const onRangeEditorMouseDown = (event: MouseEvent): void => {
   // Close our range editor (applying its value) if the mouse is pressed outside of it.
+  // Note: we listen to the window in the capturing phase, so event.target is our shadow host rather than the element
+  //       that was actually pressed (see src/common/shadowCompat.ts), hence we check the event's composed path instead.
 
-  if (!rangeEditorRef.value?.contains(event.target as Node)) {
+  const rangeEditor = rangeEditorRef.value;
+
+  if (!rangeEditor || !event.composedPath().includes(rangeEditor)) {
     closeRangeEditor(true);
   }
 };
@@ -2664,7 +2674,7 @@ const drawTickLabels = (u: uPlot): void => {
   context.save();
 
   context.font = `${Math.round(TICK_FONT_SIZE * area.pxRatio)}px ${FONT_FAMILY}`;
-  context.fillStyle = colors.cssColor(themeColors.value.text);
+  context.fillStyle = cssColor(themeColors.value.text);
   context.textBaseline = 'alphabetic';
 
   for (const tickLabel of tickLabels(u, area)) {
@@ -2947,7 +2957,7 @@ const drawZeroLines = (u: uPlot): void => {
   // Like Plotly, draw our zero lines.
   // Note: this gets called after uPlot draws our (major) grid lines and before it draws our traces.
 
-  drawLines(u, colors.cssColor(themeColors.value.zeroLine), [0], [0]);
+  drawLines(u, cssColor(themeColors.value.zeroLine), [0], [0]);
 };
 
 const drawMinorGrid = (u: uPlot): void => {
@@ -2955,12 +2965,7 @@ const drawMinorGrid = (u: uPlot): void => {
   // Note: this gets called before uPlot draws our (major) grid lines, so that the latter are drawn on top of the
   //       former.
 
-  drawLines(
-    u,
-    colors.cssColor(themeColors.value.minorGrid),
-    axisTicks.x?.minorTicks ?? [],
-    axisTicks.y?.minorTicks ?? []
-  );
+  drawLines(u, cssColor(themeColors.value.minorGrid), axisTicks.x?.minorTicks ?? [], axisTicks.y?.minorTicks ?? []);
 };
 
 // Traces and markers.
@@ -3633,7 +3638,7 @@ const createPlot = (width: number, height: number): void => {
   // Create our plot.
 
   const axis: uPlot.Axis = {
-    stroke: colors.cssColor(themeColors.value.text),
+    stroke: cssColor(themeColors.value.text),
     font: tickFont,
     labelFont: `${TITLE_FONT_SIZE}px ${FONT_FAMILY}`,
     labelGap: 0,
@@ -3642,7 +3647,7 @@ const createPlot = (width: number, height: number): void => {
       show: false
     },
     grid: {
-      stroke: colors.cssColor(themeColors.value.grid),
+      stroke: cssColor(themeColors.value.grid),
       width: 1
     }
   };
@@ -4022,6 +4027,13 @@ vue.watch(
 </script>
 
 <style scoped>
+  /* Always use our own font, even if we are asked to use the font of a host application (see OpenCORCore.vue), so that
+     the layout of our graphs doesn't depend on the font of a host application. */
+
+  .graph-panel-widget {
+    font-family: var(--opencor-font-family);
+  }
+
   .axis-title {
     position: absolute;
     line-height: 1;

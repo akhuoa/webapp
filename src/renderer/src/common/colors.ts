@@ -23,8 +23,9 @@ export const PALETTE_COLORS = Object.keys(PALETTE);
 export const DEFAULT_COLOR = '#4e79a7'; // Default colour (blue)
 
 // PrimeVue colours.
-// Note: we use PrimeVue's Aura theme (see OpenCOR.vue) which (colour) tokens may reference other tokens (e.g., in dark
-//       mode, content.background is "{surface.900}", which itself is "{zinc.900}", i.e. "#18181b").
+// Note: we use PrimeVue's Aura theme (see scripts/primevue.css.plugin.ts) which (colour) tokens may reference other
+//       tokens (e.g., in dark mode, content.background is "{surface.900}", which itself is "{zinc.900}", i.e.
+//       "#18181b").
 
 type TokenTree = { [key: string]: string | TokenTree | undefined };
 
@@ -105,12 +106,14 @@ export const primeVueColor = (token: string, darkMode: boolean): string | undefi
   return resolve(lookUp(token), 0);
 };
 
-export const cssColor = (color: string): string => {
+export const cssColor = (color: string, element: Element | null): string => {
   // Resolve the given colour if it is a CSS variable (e.g., "var(--p-surface-200)"), so that it can be used on a
   // canvas.
-  // Note: this must only be called from our renderer since it uses the DOM.
+  // Note #1: this must only be called from our renderer since it uses the DOM.
+  // Note #2: we resolve the CSS variable against the given element since our CSS variables are only defined within our
+  //          shadow root (see src/common/shadowCss.ts).
 
   const cssVariable = /^var\((--[\w-]+)\)$/.exec(color)?.[1];
 
-  return cssVariable ? getComputedStyle(document.documentElement).getPropertyValue(cssVariable).trim() || color : color;
+  return cssVariable && element ? getComputedStyle(element).getPropertyValue(cssVariable).trim() || color : color;
 };

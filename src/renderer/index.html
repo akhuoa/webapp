@@ -15,13 +15,14 @@
       margin: 0;
       overflow: hidden;
     }
+    /* Note: OpenCOR lets us know about its theme through the data-opencor-theme attribute of its element. */
     @media (prefers-color-scheme: dark) {
-      :root:not(.opencor-light-mode) body {
+      body:not(:has([data-opencor-theme="light"])) {
         background-color: #18181b; /* Dark version of --p-content-background. */
         color: #ffffff; /* Dark version of --p-content-color. */
       }
     }
-    :root.opencor-dark-mode body {
+    body:has([data-opencor-theme="dark"]) {
       background-color: #18181b; /* Dark version of --p-content-background. */
       color: #ffffff; /* Dark version of --p-content-color. */
     }

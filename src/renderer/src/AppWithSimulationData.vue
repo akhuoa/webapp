@@ -1,5 +1,5 @@
 <template>
-  <div class="opencor" style="height: 100vh; height: 100dvh;">
+  <div style="height: 100vh; height: 100dvh;">
     <div class="h-full flex flex-col">
       <div class="flex p-2 space-x-2 justify-center">
         <button :class="['flex-1 px-4 py-2 rounded text-center cursor-pointer', areModelParametersTracked(voi) ? 'bg-red-600' : 'bg-green-600', 'transition transform duration-150 ease-out active:scale-95 active:opacity-80']" @click="trackOrUntrackModelParameters(voi)">VOI</button>
@@ -89,7 +89,3 @@ const onSimulationData = (event: IOpenCORSimulationDataEvent) => {
   }
 };
 </script>
-
-<style>
-@import "tailwindcss/preflight.css" layer(base);
-</style>

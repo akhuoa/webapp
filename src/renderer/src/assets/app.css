@@ -1,10 +1,16 @@
 /* stylelint-disable at-rule-no-unknown, no-invalid-position-at-import-rule */
 @config "../../tailwind.config.ts";
 
-@layer theme, base, components, utilities;
+@layer opencor-reset, theme, base, components, utilities;
 
 /* biome-ignore lint/correctness/noInvalidPositionAtImportRule: ignored using `--suppress` */
 @import "tailwindcss/theme.css" layer(theme);
+
+/* Note: we include Tailwind CSS's preflight since our styles live in a shadow root (see src/element.ts), i.e. we don't
+         get the preflight of a host application (if any), nor should we rely on it. */
+
+/* biome-ignore lint/correctness/noInvalidPositionAtImportRule: ignored using `--suppress` */
+@import "tailwindcss/preflight.css" layer(base);
 
 /* biome-ignore lint/correctness/noInvalidPositionAtImportRule: ignored using `--suppress` */
 @import "tailwindcss/utilities.css" layer(utilities);
@@ -15,48 +21,86 @@
 /* biome-ignore lint/correctness/noInvalidPositionAtImportRule: ignored using `--suppress` */
 @import "primeicons/primeicons.css";
 
+/* Note: the styles that are shared by our simulation experiment views are scoped under `.simulation-experiment-view`, so
+         they can be global (within our shadow root). */
+
+/* biome-ignore lint/correctness/noInvalidPositionAtImportRule: ignored using `--suppress` */
+@import "../components/views/simulation-experiment-view.css";
+
 /* Make Tailwind CSS's dark variant follow our theme rather than (necessarily) the system's theme. */
 
 @custom-variant dark (&:where(.opencor-dark-mode, .opencor-dark-mode *));
 
-body {
+/* Our shadow host, i.e. the only element of ours that is in the host document. */
+
+:host {
+  display: block;
+  height: 100%;
+}
+
+/* Use the font of the host application, if requested (see OpenCORCore.vue). */
+
+:host([data-opencor-host-font]) {
+  font-family: inherit;
+}
+
+/* The root element of our shadow root, which resets all the properties that would otherwise be inherited from the host
+   application (e.g., its colour, font, and line height), and which holds our theme.
+   Note: our reset is in the first layer, so that Tailwind CSS's preflight (which, for us, targets this element rather
+         than the html element, see src/common/shadowCss.ts) can then set this element's properties as it would for the
+         html element. */
+
+@layer opencor-reset {
+  .opencor-shadow-root {
+    all: initial;
+  }
+}
+
+.opencor-shadow-root {
+  --opencor-font-family:
+    Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans",
+    "Helvetica Neue", sans-serif;
+
+  display: block;
+  height: 100%;
+
+  &.opencor-host-font {
+    font-family: inherit;
+  }
+}
+
+.opencor {
+  --border-color: var(--p-content-border-color);
+
   *,
   ::before,
   ::after {
-    box-sizing: initial;
+    box-sizing: border-box;
   }
 
-  .opencor {
-    --border-color: var(--p-content-border-color);
+  background-color: var(--p-content-background);
+  color: var(--p-content-color);
+  margin: 0;
+  font-family: var(--opencor-font-family);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
 
-    *,
-    ::before,
-    ::after {
-      box-sizing: border-box;
-    }
+  .opencor-host-font & {
+    font-family: inherit;
+  }
 
-    background-color: var(--p-content-background);
-    color: var(--p-content-color);
-    margin: 0;
-    font-family:
-      Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans",
-      "Droid Sans", "Helvetica Neue", sans-serif;
-    text-rendering: optimizeLegibility;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    user-select: none;
+  .p-contextmenu-item-content,
+  .p-contextmenu-item-link {
+    color: var(--p-contextmenu-item-color, var(--p-text-color));
+  }
 
-    .p-contextmenu-item-content,
-    .p-contextmenu-item-link {
-      color: var(--p-contextmenu-item-color, var(--p-text-color));
-    }
+  a {
+    color: var(--p-button-link-color);
+  }
 
-    a {
-      color: var(--p-button-link-color);
-    }
-
-    :focus {
-      outline: none !important;
-    }
+  :focus {
+    outline: none !important;
   }
 }

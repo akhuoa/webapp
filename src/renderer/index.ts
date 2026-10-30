@@ -3,6 +3,7 @@ export type OpenCORTheme = 'light' | 'dark' | 'system';
 export interface IOpenCORProps {
   omex?: string | Uint8Array;
   theme?: OpenCORTheme;
+  hostFont?: boolean;
 }
 
 export interface IOpenCORExpose {

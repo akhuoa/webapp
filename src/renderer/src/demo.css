@@ -1,0 +1,9 @@
+/* stylelint-disable at-rule-no-unknown */
+
+/* The styles of our demo host applications (e.g., App.vue), i.e. of the host document, not of our OpenCOR component,
+   which lives in a shadow root and therefore isn't affected by them (see element.ts).
+   Note: we only generate the Tailwind CSS utilities that our demo host applications use. */
+
+@import "tailwindcss" source(none);
+
+@source "./App*.vue";
