@@ -57,9 +57,14 @@
 }
 
 .opencor-shadow-root {
+  /* Note: stylelint's value-keyword-case rule doesn't know that this is a font family, so it would lowercase its font
+           names (e.g., BlinkMacSystemFont), some of which are case-sensitive. */
+
+  /* stylelint-disable value-keyword-case */
   --opencor-font-family:
     Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans",
     "Helvetica Neue", sans-serif;
+  /* stylelint-enable value-keyword-case */
 
   display: block;
   height: 100%;

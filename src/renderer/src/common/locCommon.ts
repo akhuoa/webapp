@@ -153,6 +153,30 @@ export const combineArchiveDataUrl = (dataUrl: string | Uint8Array | File): IDat
   };
 };
 
+// Determine whether the given file is a CellDL file, i.e. an SVG file with some CellDL metadata.
+// Note: we cache the result since this may get called a lot (e.g., to determine which views apply to the file). The
+//       cache is keyed by File object (not by path) and a File object's contents never change, so it cannot get stale.
+
+const isCellDLFileCache = new WeakMap<locApi.File, boolean>();
+
+export const isCellDLFile = (file: locApi.File): boolean => {
+  let res = isCellDLFileCache.get(file);
+
+  if (res === undefined) {
+    if (file.type() === locApi.EFileType.UNKNOWN_FILE) {
+      const contents = new TextDecoder().decode(file.contents());
+
+      res = /<svg[\s>]/.test(contents) && /\bid\s*=\s*["']celldl-rdf-metadata["']/.test(contents);
+    } else {
+      res = false;
+    }
+
+    isCellDLFileCache.set(file, res);
+  }
+
+  return res;
+};
+
 export const filePath = (
   fileFilePathOrFileContents: string | Uint8Array | File,
   dataUrlFileName: string,

@@ -1,5 +1,5 @@
 <template>
-  <div ref="rootRef" class="simulation-experiment-view h-full flex flex-col">
+  <div ref="rootRef" class="simulation-experiment-view toolbar-based-view h-full flex flex-col">
     <IssuesView v-if="issues.length" class="m-4 mb-0" style="height: calc(100% - 2rem);" :issues="issues" />
     <template v-else>
       <Toolbar v-if="!simulationOnly" class="p-1! shrink-0">
@@ -46,13 +46,33 @@
           <div v-else class="flex grow min-h-0">
             <div class="ml-4 mr-4 mb-4">
               <ScrollPanel class="h-full">
-                <Fieldset legend="Simulation inputs">
-                  <InputWidget
+                <Fieldset :id="inputsFieldsetId" class="inputs-fieldset">
+                  <template #legend>
+                    <div class="relative flex items-center">
+                      <span :id="`${inputsFieldsetId}_header`" class="p-fieldset-legend-label">Simulation inputs</span>
+                      <span class="inputs-fieldset-line grow ms-3"></span>
+                      <div class="inputs-fieldset-reset"
+                        :class="{ 'inputs-fieldset-reset-hidden': allSimulationInputsAtDefaultValues }"
+                      >
+                        <Button class="p-0! w-5! h-5! reset-inputs-button"
+                          icon="pi pi-undo"
+                          text severity="secondary"
+                          size="small"
+                          title="Reset all simulation inputs to their default values"
+                          :disabled="allSimulationInputsAtDefaultValues"
+                          @mousedown.prevent
+                          @click="onResetInputs"
+                        />
+                      </div>
+                    </div>
+                  </template>
+                  <InputWidget ref="inputWidgetsRef"
                     v-for="(input, index) in actualUiJson.input"
                     v-model="inputValues[index]!"
                     v-show="showInput[index]"
                     :key="`input_${index}`"
                     :name="input.name"
+                    :defaultValue="input.defaultValue"
                     :maximumValue="locApi.isScalarInput(input) ? input.maximumValue : undefined"
                     :minimumValue="locApi.isScalarInput(input) ? input.minimumValue : undefined"
                     :possibleValues="locApi.isDiscreteInput(input) ? input.possibleValues : undefined"
@@ -60,6 +80,7 @@
                     :class="index !== 0 ? 'mt-6' : ''"
                     @change="onInputChange()"
                     @changeEnd="onInputChangeEnd()"
+                    @atDefaultValueChange="(_name: string, atDefaultValue: boolean) => onInputAtDefaultValueChange(index, atDefaultValue)"
                   />
                 </Fieldset>
                 <Fieldset legend="Runs">
@@ -210,6 +231,7 @@ import * as locUiJsonApi from '../../libopencor/locUiJsonApi';
 import type { ISimulationExperimentInteractiveViewSettingsDialog } from '../dialogs/SimulationExperimentInteractiveViewSettingsDialog.vue';
 import { useOpenCORContext } from '../OpenCORContext';
 import GraphPanelWidget from '../widgets/GraphPanelWidget.vue';
+import InputWidget from '../widgets/InputWidget.vue';
 import type { IGraphPanelData, IGraphPanelMargins, IGraphPanelPlotTrace } from '../widgets/GraphPanelWidget.vue';
 
 interface ISimulationRun {
@@ -254,6 +276,12 @@ const uniformTimeCourse = isDocumentValid ? (document.simulation(0) as locApi.Se
 const cvode = uniformTimeCourse?.cvode() ?? null;
 const mathEval = new math.Float64ArrayMath();
 const model = isDocumentValid ? document.model(0) : null;
+
+// The ID of our simulation inputs' fieldset.
+// Note: we customise the legend of our simulation inputs' fieldset, so we need to give its label the ID that the
+//       fieldset expects (i.e. `<fieldset id>_header`) for its contents to still be labelled by it.
+
+const inputsFieldsetId = `simulationInputs${vue.getCurrentInstance()?.uid}`;
 
 // Some helper functions to evaluate and apply the model changes resulting from the given parameters and scope.
 
@@ -462,6 +490,8 @@ if (uiJsonIssues.value.length && instanceModelChangesKey !== NO_MODEL_CHANGES_KE
 const simulationIssues = vue.ref<locApi.IIssue[]>([]);
 const inputValues = vue.ref<number[]>([]);
 const showInput = vue.ref<boolean[]>([]);
+const inputsShownAtDefaultValues = vue.ref<(boolean | undefined)[]>([]);
+const inputWidgetsRef = vue.ref<InstanceType<typeof InputWidget>[]>([]);
 const idToInfo = new Map<string, locCommon.ISimulationDataInfo>();
 
 // A helper function to retrieve the simulation data information for the given name.
@@ -655,6 +685,7 @@ const updateUi = (): void => {
   showInput.value = actualUiJson.value.input.map((input: locApi.IUiJsonInput) => {
     return (input.visible ?? 'true') !== 'false';
   });
+  inputsShownAtDefaultValues.value = [];
 };
 
 // A helper function to generate a unique external data ID based on a candidate name and a set of already used IDs.
@@ -1114,7 +1145,7 @@ const externalDataValues = (voi: math.FloatArray, externalDataMapping: IExternal
     return res;
   }
 
-  // Determine whether we can use the input data as-is (i.e. strictly increasing X values) for interpolation or whether
+  // Determine whether we can use the input data as is (i.e. strictly increasing X values) for interpolation or whether
   // we need to normalise it first (i.e. sort and deduplicate the input data before interpolation).
 
   let useInputAsIs = true;
@@ -2022,7 +2053,7 @@ const onToggleRunColorPopover = (index: number, event: MouseEvent): void => {
 
 const onDownloadCombineArchive = (): void => {
   const jsZip = new dependencies._jsZip();
-  const baseFileName = common.fileName(props.file.canonicalPath()).replace(/\.[^/.]+$/, '');
+  const baseFileName = common.baseFileName(common.fileName(props.file.canonicalPath()));
   const modelFile = model?.file();
 
   if (!modelFile) {
@@ -2235,6 +2266,53 @@ const onInputChangeEnd = (): void => {
   }
 };
 
+// Reset all our simulation inputs to their default values.
+// Note: a scalar input may show a value that has yet to be committed (i.e. while it is being edited), so we also keep
+//       track of whether the value shown by an input is its default value, so that our inputs can be reset even if
+//       their committed values are their default values. An input that doesn't tell us whether the value it shows is
+//       its default value (e.g., a discrete input) shows its committed value.
+
+const onInputAtDefaultValueChange = (index: number, atDefaultValue: boolean): void => {
+  inputsShownAtDefaultValues.value[index] = atDefaultValue;
+};
+
+const allSimulationInputsAtDefaultValues = vue.computed<boolean>(() => {
+  return actualUiJson.value.input.every((input: locApi.IUiJsonInput, index: number) => {
+    return inputValues.value[index] === input.defaultValue && inputsShownAtDefaultValues.value[index] !== false;
+  });
+});
+
+const onResetInputs = (): void => {
+  // Discard any value that is being edited, so that it doesn't get committed (and simulated) once its input loses the
+  // focus.
+  // Note: our reset button doesn't take the focus when clicked, so that the input that has the focus (if any) doesn't
+  //       commit its value before we get here.
+
+  for (const inputWidget of inputWidgetsRef.value) {
+    inputWidget.discardEdit();
+  }
+
+  // Reset our input values and rerun our simulation, but only if needed (i.e. if there was only a value being edited
+  // then there is nothing else to do).
+
+  const defaultInputValues = actualUiJson.value.input.map((input: locApi.IUiJsonInput) => {
+    return input.defaultValue;
+  });
+
+  if (
+    defaultInputValues.every((defaultInputValue: number, index: number) => {
+      return inputValues.value[index] === defaultInputValue;
+    })
+  ) {
+    return;
+  }
+
+  inputValues.value = defaultInputValues;
+
+  onInputChange();
+  onInputChangeEnd();
+};
+
 // Make sure that any pending simulation updates are discarded once we get unmounted.
 
 vue.onBeforeUnmount(() => {
@@ -2311,6 +2389,46 @@ vue.onMounted(() => {
   font-size: 1.25rem;
 }
 
+/**
+ * Our inputs' reset button is only shown when there is something to reset, in which case it hides the part of our line
+ * where it is (using our legend's background). Our line always goes all the way to the end of our legend (i.e. our
+ * legend has no end padding or border), so that it looks like our fieldset's top border is uninterrupted when our reset
+ * button is hidden.
+ * Note #1: our line is drawn as a whole (rather than, say, using a separate element for the part where our reset button
+ *          is) since Chrome may otherwise render that part one device pixel off our line (e.g., with a device pixel
+ *          ratio of 1.25 or 1.75).
+ * Note #2: the minimum width of our line accounts for our reset button and the space around it (i.e. our legend's end
+ *          padding and border, which are now part of our line), so that our legend (and therefore our fieldset) is as
+ *          wide as it would be if our reset button was part of our legend's layout, i.e. it doesn't change width when
+ *          our reset button gets shown or hidden.
+ */
+
+.inputs-fieldset :deep(.p-fieldset-legend) {
+  width: 100%;
+  padding-inline-end: 0;
+  border-inline-end-width: 0;
+}
+
+.inputs-fieldset-line {
+  min-width: calc(0.75rem + 1.25rem + 0.75rem + 1px);
+  border-top: 1px solid var(--p-fieldset-border-color);
+}
+
+.inputs-fieldset-reset {
+  position: absolute;
+  inset-block: 0;
+  inset-inline-end: 1px;
+  display: flex;
+  align-items: center;
+  padding-inline: 0.75rem;
+  background: var(--p-fieldset-legend-background);
+  transition: opacity 0.15s;
+}
+
+.inputs-fieldset-reset-hidden {
+  opacity: 0;
+}
+
 .note {
   color: var(--p-text-muted-color);
   margin-top: 0.5rem;
@@ -2324,6 +2442,33 @@ vue.onMounted(() => {
   font-size: 0.875rem;
   padding-top: 0;
   padding-bottom: 0;
+}
+
+.reset-inputs-button {
+  transition:
+    opacity 0.15s,
+    transform 0.15s;
+}
+
+.reset-inputs-button:not(:disabled) {
+  opacity: 0.75;
+}
+
+.reset-inputs-button:not(:disabled):hover {
+  opacity: 1;
+  transform: scale(1.15);
+}
+
+.reset-inputs-button:disabled {
+  opacity: 0;
+  transform: scale(0.5);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inputs-fieldset-reset,
+  .reset-inputs-button {
+    transition: none;
+  }
 }
 
 .run-action-button {

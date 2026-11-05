@@ -25,6 +25,14 @@ if (!fs.existsSync(distAssetsPath)) {
 
 fs.writeFileSync(path.join(distAssetsPath, 'version.json'), JSON.stringify({ version }, null, 2));
 
+// Copy our changelog file, so that OpenCOR's Web app can tell the user what is new in a newer version (see
+// src/common/changelog.ts).
+// Note: like version.json, it has a fixed name, so it must never be cached for long (see public/.htaccess). It also
+//       gets uploaded before version.json when deploying our Web app (see .github/workflows/cd.yml and cddev.yml), so
+//       it is always available by the time a newer version gets reported.
+
+fs.copyFileSync(path.join(__dirname, '../changelog.json'), path.join(distAssetsPath, 'changelog.json'));
+
 // Log the generated version.
 
 console.log(`Generated version.json with version ${version}.`);

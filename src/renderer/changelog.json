@@ -1,0 +1,35 @@
+[
+  {
+    "version": "1.20261031.0",
+    "changes": [
+      {
+        "type": "added",
+        "description": "A CellDL Editor view to edit CellDL files."
+      },
+      {
+        "type": "added",
+        "description": "The ability to export a CellDL file to a COMBINE archive and to simulate it."
+      },
+      {
+        "type": "improved",
+        "description": "Switching views using the mouse wheel or a trackpad now switches only one view per gesture."
+      },
+      {
+        "type": "improved",
+        "description": "Blocking messages now show and hide without any transition, and their progress bar spans their full width."
+      },
+      { "type": "improved", "description": "Upgraded libOpenCOR to version 1.20261029.0." }
+    ]
+  },
+  {
+    "version": "1.20261027.0",
+    "changes": [
+      { "type": "added", "description": "A Changelog dialog, which lists the changes of all the versions of OpenCOR." },
+      { "type": "added", "description": "A `changelog()` method to OpenCOR's component." },
+      {
+        "type": "improved",
+        "description": "The update dialog now lists what has changed in the newer version of OpenCOR."
+      }
+    ]
+  }
+]

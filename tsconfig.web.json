@@ -5,5 +5,10 @@
     "outDir": "dist"
   },
   "include": ["src/renderer/**/*.ts", "src/renderer/**/*.vue", "src/renderer/package.json"],
-  "exclude": ["src/renderer/scripts", "src/renderer/vite.config.ts", "src/renderer/vite.lib.config.ts"]
+  "exclude": [
+    "src/renderer/scripts",
+    "src/renderer/vite.config.ts",
+    "src/renderer/vite.lib.config.ts",
+    "src/renderer/vite.celldl.config.ts"
+  ]
 }

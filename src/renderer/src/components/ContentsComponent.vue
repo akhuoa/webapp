@@ -51,6 +51,7 @@
                 :is="view(fileTab).component"
                 v-bind="view(fileTab).props"
                 @error="$emit('error', $event)"
+                @openFile="$emit('openFile', $event)"
               />
             </KeepAlive>
           </div>
@@ -67,6 +68,7 @@ import type { IOpenCORExternalDataEvent, IOpenCORSimulationDataEvent } from '../
 
 import * as common from '../common/common';
 import { electronApi } from '../common/electronApi';
+import * as locCommon from '../common/locCommon';
 import { useViewRegistry } from '../common/viewRegistry';
 import * as locApi from '../libopencor/locApi';
 
@@ -84,6 +86,7 @@ const emit = defineEmits<{
   error: [message: string];
   fileClosed: [filePath: string];
   fileOpened: [filePath: string];
+  openFile: [fileFilePathOrFileContents: string];
   simulationData: [];
 }>();
 
@@ -154,6 +157,14 @@ const view = (fileTab: IFileTab): IView => {
   }
 
   switch (viewDescriptor.id) {
+    case 'celldl-editor':
+      return {
+        component: viewDescriptor.component,
+        props: {
+          file: fileTab.file,
+          isActiveFile: fileTab.file.path() === activeFile.value
+        }
+      };
     case 'simulation-experiment-standard':
       return {
         component: viewDescriptor.component,
@@ -272,7 +283,11 @@ const openFile = async (file: locApi.File, wait: boolean = false): Promise<void>
   fileTabs.value.splice(fileTabs.value.findIndex((fileTab) => fileTab.file.path() === prevActiveFile) + 1, 0, {
     file: file,
     uiJson: uiJson,
-    activeViewId: uiJson ? 'simulation-experiment-interactive' : 'simulation-experiment-standard'
+    activeViewId: locCommon.isCellDLFile(file)
+      ? 'celldl-editor'
+      : uiJson
+        ? 'simulation-experiment-interactive'
+        : 'simulation-experiment-standard'
   });
 
   // Select the file and let people know that it has been opened.

@@ -1,5 +1,5 @@
 <template>
-  <div ref="rootRef" class="simulation-experiment-view h-full flex flex-col">
+  <div ref="rootRef" class="simulation-experiment-view toolbar-based-view h-full flex flex-col">
     <IssuesView v-if="issues.length" class="m-4 mb-0" style="height: calc(100% - 2rem);" :issues="issues" />
     <template v-else>
       <Toolbar class="p-1! shrink-0">
@@ -77,7 +77,7 @@
             </Splitter>
           </SplitterPanel>
           <SplitterPanel v-if="!simulationOnly" :size="11">
-            <div ref="editorRef" class="h-full console overflow-y-auto px-2 py-1 leading-[1.42] text-[13px]" aria-readonly="true" v-html="consoleContents"></div>
+            <div ref="editorRef" class="h-full console overflow-y-auto px-2 py-1 leading-[1.42] text-[13px]" v-html="consoleContents"></div>
           </SplitterPanel>
         </Splitter>
         <ProgressBar class="h-0.75!" :showValue="false" :value="progress" />

@@ -21,6 +21,8 @@ import { toShadowCssAst } from './shadow.css.plugin.ts';
 // Note #4: our theme must be in sync with the one we use at run time (see src/element.ts).
 
 const PRIMEVUE_COMPONENTS = [
+  // The PrimeVue components that we use.
+
   'blockui',
   'button',
   'checkbox',
@@ -51,7 +53,18 @@ const PRIMEVUE_COMPONENTS = [
   'toast',
   'togglebutton',
   'toggleswitch',
-  'toolbar'
+  'toolbar',
+
+  // The PrimeVue components that CellDL Editor uses (see src/celldl/runtime.ts) and that we don't use ourselves.
+  // Note: CellDL Editor comes with its own copy of PrimeVue, but its components use our PrimeVue configuration, i.e.
+  //       no theme (see src/element.ts), so they rely on the styles that we generate.
+
+  'accordion',
+  'accordioncontent',
+  'accordionheader',
+  'accordionpanel',
+  'card',
+  'divider'
 ];
 
 // Note: PrimeVue defines its theme's CSS variables on `:root` (i.e. on our shadow host, see src/common/shadowCss.ts) and

@@ -10,6 +10,7 @@ for (const path of [
   'src/renderer/components.d.ts',
   'src/renderer/dist',
   'src/renderer/node_modules',
+  'src/renderer/public/celldl',
   'src/renderer/public/libopencor'
 ]) {
   if (fs.existsSync(path)) {

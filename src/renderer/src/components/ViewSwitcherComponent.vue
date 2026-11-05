@@ -18,7 +18,8 @@
         :title="view.label"
         @click="$emit('selectView', view.id)"
       >
-        <i :class="view.icon" class="text-lg" />
+        <i v-if="typeof view.icon === 'string'" :class="view.icon" class="text-lg" />
+        <span v-else class="view-icon-image" :style="viewIconImageStyle(view.icon.url)" />
       </button>
     </template>
   </nav>
@@ -87,12 +88,25 @@ const setViewButtonRef = (viewId: string, element: unknown): void => {
   }
 };
 
-// Switch views with the mouse wheel.
-// Note: we don't wrap around, i.e. we don't go from the last view to the first view, or vice versa. Also, we damp the
-//       wheel delta to avoid switching views too quickly when the user scrolls fast.
+// Style of a view icon that is an image, i.e. use the image as a mask.
+// Note: Vite inlines an SVG file as a data URL which may contain single quotes (it replaces the SVG's double quotes
+//       with single quotes), so we must use double quotes in url().
 
-const wheelDelta = vue.ref(0);
-const wheelThreshold = 321;
+const viewIconImageStyle = (url: string): vue.CSSProperties => {
+  return {
+    maskImage: `url("${url}")`
+  };
+};
+
+// Switch views with the mouse wheel.
+// Note: we don't wrap around, i.e. we don't go from the last view to the first view, or vice versa. Also, we switch
+//       views only once per wheel gesture, i.e. a series of wheel events in the same direction with no pause between
+//       them, so that we don't switch views too quickly when the user scrolls fast (or when a trackpad keeps sending
+//       wheel events after a swipe).
+
+const wheelGestureDelay = 250;
+let lastWheelTime = 0;
+let lastWheelDirection = 0;
 
 const selectViewByOffset = (offset: number): void => {
   const activeViewIndex = viewIds.value.indexOf(props.activeViewId);
@@ -109,22 +123,18 @@ const selectViewByOffset = (offset: number): void => {
 };
 
 const onWheel = (event: WheelEvent): void => {
-  if (!viewIds.value.length) {
+  if (!viewIds.value.length || !event.deltaY) {
     return;
   }
 
-  wheelDelta.value += event.deltaY;
+  const wheelDirection = Math.sign(event.deltaY);
+  const newWheelGesture = event.timeStamp - lastWheelTime > wheelGestureDelay || wheelDirection !== lastWheelDirection;
 
-  while (wheelDelta.value >= wheelThreshold) {
-    wheelDelta.value -= wheelThreshold;
+  lastWheelTime = event.timeStamp;
+  lastWheelDirection = wheelDirection;
 
-    selectViewByOffset(1);
-  }
-
-  while (wheelDelta.value <= -wheelThreshold) {
-    wheelDelta.value += wheelThreshold;
-
-    selectViewByOffset(-1);
+  if (newWheelGesture) {
+    selectViewByOffset(wheelDirection);
   }
 };
 
@@ -161,5 +171,14 @@ vue.watch(
   background-color: color-mix(in srgb, var(--view-category-color) 20%, transparent);
   border-left-color: var(--view-category-color);
   color: var(--view-category-color);
+}
+
+.view-icon-image {
+  width: 1.125rem;
+  height: 1.125rem;
+  background-color: currentColor;
+  mask-position: center;
+  mask-repeat: no-repeat;
+  mask-size: contain;
 }
 </style>

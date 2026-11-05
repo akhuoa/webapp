@@ -250,6 +250,13 @@ export const enableDisableMainMenu = (enable: boolean): void => {
     });
     helpSubMenu.push({ type: 'separator' });
     helpSubMenu.push({
+      label: 'Changelog',
+      click: () => {
+        mainWindow?.send('changelog');
+      }
+    });
+    helpSubMenu.push({ type: 'separator' });
+    helpSubMenu.push({
       label: 'Report Issue',
       click: () => {
         electron.shell.openExternal('https://github.com/opencor/webapp/issues/new').catch((error: unknown) => {

@@ -24,14 +24,17 @@ export const ViewCategory = {
 export type ViewCategory = (typeof ViewCategory)[keyof typeof ViewCategory];
 
 // View descriptor.
+// Note: a view's icon is either the CSS class of a font icon (e.g., 'pi pi-chart-line') or the URL of a monochrome
+//       image (e.g., an inlined SVG file), which is used as a mask so that it gets coloured like a font icon.
 
 export interface IViewDescriptor {
   id: string;
   category: ViewCategory;
   label: string;
-  icon: string;
+  icon: string | { url: string };
   component: vue.Component;
   fileTypes: readonly EFileType[];
+  supportsFile?: (file: File) => boolean;
 }
 
 // View registry composable.
@@ -57,9 +60,11 @@ export const useViewRegistry = vueusecore.createGlobalState(() => {
   }
 
   // Determine whether a view descriptor is applicable to a given file.
+  // Note: a view may further restrict the files it supports (e.g., our CellDL Editor view only supports unknown files
+  //       that are CellDL files).
 
   const isApplicable = (descriptor: IViewDescriptor, file: File): boolean => {
-    return descriptor.fileTypes.includes(file.type());
+    return descriptor.fileTypes.includes(file.type()) && (descriptor.supportsFile?.(file) ?? true);
   };
 
   // Resolve the view to show for a file.

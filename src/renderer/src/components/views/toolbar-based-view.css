@@ -1,0 +1,25 @@
+/**
+ * Shared styles for views that contain a toolbar.
+ * Note #1: the rules are scoped under `.toolbar-based-view` (applied to the root element of those views) so that they
+ *          do not affect the rest of the application.
+ * Note #2: our CellDL Editor view hosts CellDL Editor (see CellDLEditorView.vue), which has its own toolbars and
+ *          buttons, so our rules only target our view's toolbar (i.e. the one that is a direct child of our root
+ *          element) and its buttons.
+ */
+
+.toolbar-based-view {
+  > .p-toolbar {
+    border: none;
+    border-radius: 0;
+    border-bottom: 1px solid var(--p-content-border-color);
+  }
+
+  .toolbar-button .p-button-icon {
+    font-size: 1.5rem;
+  }
+
+  .toolbar-button:not(:disabled):hover {
+    background-color: var(--p-surface-hover) !important;
+    transform: scale(1.15);
+  }
+}

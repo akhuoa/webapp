@@ -34,6 +34,7 @@
         <MainMenu ref="mainMenuRef" v-if="isFullWebApp"
           :hasFiles="hasFiles"
           @about="onAboutMenu"
+          @changelog="onChangelogMenu"
           @open="onOpenMenu"
           @openRemote="onOpenRemoteMenu"
           @openSampleLorenz="onOpenSampleLorenzMenu"
@@ -60,22 +61,22 @@
           @error="onError"
           @fileClosed="onFileClosed"
           @fileOpened="onFileOpened"
+          @openFile="openFile"
           @simulationData="emitSimulationData"
         />
         <BlockingMessageComponent v-show="initialisingOpencorMessageVisible" message="Initialising OpenCOR..." :progress="initialisation.progress.value" />
         <BlockingMessageComponent v-if="loadingModelMessageVisible" message="Loading model..." />
         <BlockingMessageComponent v-show="loadingExternalDataVisible" message="Loading external data..." />
-        <BlockingMessageComponent v-show="progressMessageVisible" :message="progressMessageMessage" :progress="progressMessageProgress" />
+        <BlockingMessageComponent v-show="opencorMessageVisible" :message="opencorMessageMessage" :progress="opencorMessageProgress" />
         <OkMessageDialog v-model:visible="updateErrorVisible"
           :title="updateErrorTitle"
           :message="updateErrorIssue"
           @ok="onUpdateErrorDialogClose"
         />
-        <YesNoQuestionDialog v-model:visible="desktopUpdateAvailableVisible"
-          title="Check for Updates..."
-          :question="'Version ' + updateVersion + ' is available. Do you want to download it and install it?'"
-          @yes="onDownloadAndInstall"
-          @no="desktopUpdateAvailableVisible = false"
+        <UpdateAvailableDialog v-model:visible="updateAvailableVisible"
+          :version="updateVersion"
+          @downloadAndInstall="onDownloadAndInstall"
+          @close="updateAvailableVisible = false"
         />
         <UpdateDownloadProgressDialog v-model:visible="updateDownloadProgressVisible"
           :percent="updateDownloadPercent"
@@ -99,11 +100,11 @@
           @yes="onResetAll"
           @no="resetAllVisible = false"
         />
+        <ChangelogDialog v-model:visible="changelogVisible"
+          @close="changelogVisible = false"
+        />
         <AboutDialog v-model:visible="aboutVisible"
           @close="aboutVisible = false"
-        />
-        <UpdateAvailableDialog v-model:visible="webUpdateAvailableVisible"
-          @close="webUpdateAvailableVisible = false"
         />
       </div>
     </SafeBlockUIWidget>
@@ -127,6 +128,8 @@ import type {
   OpenCORTheme
 } from '../../index';
 
+import celldlIcon from '../assets/celldl.svg?inline';
+import * as changelog from '../common/changelog';
 import * as common from '../common/common';
 import { FULL_URI_SCHEME, LONG_DELAY, SHORT_DELAY, TOAST_LIFE } from '../common/constants';
 import { electronApi } from '../common/electronApi';
@@ -143,7 +146,7 @@ import { useViewRegistry, ViewCategory } from '../common/viewRegistry';
 import * as vueCommon from '../common/vueCommon';
 import ContentsComponent from '../components/ContentsComponent.vue';
 import { provideOpenCORContext } from '../components/OpenCORContext';
-import { provideOpenCORProgressMessage } from '../components/OpenCORProgressMessage';
+import { provideOpenCORMessage } from '../components/OpenCORMessage';
 import { provideOpenCORToast } from '../components/OpenCORToast';
 import * as locApi from '../libopencor/locApi';
 
@@ -267,6 +270,10 @@ const onFileClosed = (filePath: string): void => {
 // Exposed methods.
 
 defineExpose({
+  // General methods.
+
+  changelog: changelog.changelog,
+
   // Simulation-only methods.
 
   addExternalData,
@@ -351,14 +358,14 @@ trackCleanup(
   })
 );
 
-// Provide access to our progress message features.
-// Note: this must be done before compBlockUiEnabled is computed below since it relies on progressMessageVisible.
+// Provide access to our message features.
+// Note: this must be done before compBlockUiEnabled is computed below since it relies on opencorMessageVisible.
 
 const {
-  visible: progressMessageVisible,
-  message: progressMessageMessage,
-  progress: progressMessageProgress
-} = provideOpenCORProgressMessage();
+  visible: opencorMessageVisible,
+  message: opencorMessageMessage,
+  progress: opencorMessageProgress
+} = provideOpenCORMessage();
 
 // Determine whether the component UI should be blocked/enabled.
 // Note: compBlockUiEnabled is used to determine whether PrimeVue's BlockUI component should be enabled, whereas
@@ -374,7 +381,7 @@ const compBlockUiEnabled = vue.computed<boolean>(() => {
     initialisingOpencorMessageVisible.value ||
     loadingModelMessageVisible.value ||
     loadingExternalDataVisible.value ||
-    progressMessageVisible.value ||
+    opencorMessageVisible.value ||
     connectingToGitHub.value
   );
 });
@@ -716,14 +723,20 @@ const onUpdateErrorDialogClose = (): void => {
   updateDownloadProgressVisible.value = false;
 };
 
-const desktopUpdateAvailableVisible = vue.ref<boolean>(false);
+// Note: our update available dialog is used by both OpenCOR (when our main process lets us know that an update is
+//       available) and OpenCOR's Web app (when the user clicks on our main menu's "New version available!" button, see
+//       onUpdateAvailable() below). We keep track of the version to update to, so that it doesn't change while our
+//       dialog is shown (e.g., if an even newer version of OpenCOR's Web app gets released in the meantime), which
+//       means that it always matches the changes that our dialog lists.
+
+const updateAvailableVisible = vue.ref<boolean>(false);
 const updateDownloadProgressVisible = vue.ref<boolean>(false);
 const updateVersion = vue.ref<string>('');
 const updateDownloadPercent = vue.ref<number>(0);
 
 trackCleanup(
   electronApi?.onUpdateAvailable((version: string) => {
-    desktopUpdateAvailableVisible.value = true;
+    updateAvailableVisible.value = true;
     updateVersion.value = version;
   })
 );
@@ -731,7 +744,7 @@ trackCleanup(
 const onDownloadAndInstall = (): void => {
   updateDownloadPercent.value = 0; // Just to be on the safe side.
   updateDownloadProgressVisible.value = true;
-  desktopUpdateAvailableVisible.value = false;
+  updateAvailableVisible.value = false;
 
   electronApi?.downloadAndInstallUpdate();
 };
@@ -798,6 +811,24 @@ const onError = (message: string): void => {
   });
 };
 
+// Changelog dialog.
+
+const changelogVisible = vue.ref<boolean>(false);
+
+trackCleanup(
+  electronApi?.onChangelog(() => {
+    onChangelogMenu();
+  })
+);
+
+const onChangelogMenu = (): void => {
+  if (props.omex) {
+    return;
+  }
+
+  changelogVisible.value = true;
+};
+
 // About dialog.
 
 const aboutVisible = vue.ref<boolean>(false);
@@ -834,12 +865,22 @@ const onSettingsMenu = (): void => {
   settingsVisible.value = true;
 };
 
-// Update available dialog.
+// Update available dialog (for OpenCOR's Web app).
+// Note: we fetch the changes for a newer version as soon as we know about it, so that our update available dialog can
+//       list them straightaway (see fetchChangelog() in changelog.ts).
 
-const webUpdateAvailableVisible = vue.ref(false);
+vue.watch(
+  [version.updateAvailable, version.latestVersion],
+  ([newUpdateAvailable, newLatestVersion]: [boolean, string]) => {
+    if (newUpdateAvailable) {
+      void changelog.fetchChangelog(newLatestVersion);
+    }
+  }
+);
 
 const onUpdateAvailable = () => {
-  webUpdateAvailableVisible.value = true;
+  updateVersion.value = version.latestVersion.value;
+  updateAvailableVisible.value = true;
 };
 
 // Open a file.
@@ -1406,6 +1447,18 @@ vue.onMounted(() => {
   // Note: this must be done in onMounted so that all components are available.
 
   const viewRegistry = useViewRegistry();
+
+  // Note: the CellDL Editor is big, so we only load it when needed (see common/celldlRuntime.ts).
+
+  viewRegistry.register({
+    id: 'celldl-editor',
+    category: ViewCategory.Editing,
+    label: 'CellDL Editor',
+    icon: { url: celldlIcon },
+    component: vue.defineAsyncComponent(() => import('./views/CellDLEditorView.vue')),
+    fileTypes: [locApi.EFileType.UNKNOWN_FILE],
+    supportsFile: locCommon.isCellDLFile
+  });
 
   viewRegistry.register({
     id: 'simulation-experiment-standard',

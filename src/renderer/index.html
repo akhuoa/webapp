@@ -7,7 +7,7 @@
     <!-- https://developer.mozilla.org/en-US/docs/Web/HTTP/CSP -->
     <meta
       http-equiv="Content-Security-Policy"
-      content="default-src 'self'; connect-src *; script-src 'unsafe-eval'; script-src-elem 'self' https://apis.google.com https://cdn.jsdelivr.net https://fastly.jsdelivr.net https://gcore.jsdelivr.net https://cors-proxy.opencor.workers.dev; worker-src 'self' blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'self' https://opencorapp.firebaseapp.com; img-src 'self' blob: data:" />
+      content="default-src 'self'; connect-src * data:; script-src 'unsafe-eval'; script-src-elem 'self' https://apis.google.com https://cdn.jsdelivr.net https://fastly.jsdelivr.net https://gcore.jsdelivr.net https://cors-proxy.opencor.workers.dev; worker-src 'self' blob:; font-src 'self' data:; style-src 'self' 'unsafe-inline'; frame-src 'self' https://opencorapp.firebaseapp.com; img-src 'self' blob: data:" />
     <style scoped>
     body {
       background-color: #ffffff; /* Light version of --p-content-background. */

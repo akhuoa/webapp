@@ -38,6 +38,7 @@ interface IElectronApi {
   onAbout: (callback: () => void) => () => void;
   onAction: (callback: (action: string) => void) => () => void;
   onCanonicaliseRecentFilePaths: (callback: (filePaths: string[]) => void) => () => void;
+  onChangelog: (callback: () => void) => () => void;
   onCheckForUpdates: (callback: () => void) => () => void;
   onEnableDisableUi: (callback: (enable: boolean) => void) => () => void;
   onOpen: (callback: (filePath: string) => void) => () => void;

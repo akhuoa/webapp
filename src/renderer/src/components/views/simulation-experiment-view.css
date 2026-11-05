@@ -1,15 +1,14 @@
-/* Shared styles for the standard and interactive simulation experiment views.
+/**
+ * Shared styles for the standard and interactive simulation experiment views.
  * Note: the rules are scoped under `.simulation-experiment-view` (applied to the root element of both views) so that
  *       they do not affect the rest of the application.
  */
 
+@import "./toolbar-based-view.css";
+
 .simulation-experiment-view {
   .console {
     font-family: Helvetica, Arial, sans-serif;
-  }
-
-  .p-button-icon {
-    font-size: 1.5rem;
   }
 
   .p-editor-content {
@@ -20,18 +19,7 @@
     display: none;
   }
 
-  .p-toolbar {
-    border: none;
-    border-radius: 0;
-    border-bottom: 1px solid var(--p-content-border-color);
-  }
-
   .p-progressbar-value {
     transition: none !important;
-  }
-
-  .toolbar-button:not(:disabled):hover {
-    background-color: var(--p-surface-hover) !important;
-    transform: scale(1.15);
   }
 }

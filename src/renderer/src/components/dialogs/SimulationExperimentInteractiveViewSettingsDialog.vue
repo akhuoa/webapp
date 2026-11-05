@@ -1786,12 +1786,21 @@ const toggleUiJsonIssues = (event: Event) => {
   padding-top: 0.5rem;
 }
 
+.settings-tabs :deep(.p-button-sm.p-button-icon-only) {
+  width: var(--p-button-icon-only-width);
+}
+
+.settings-tabs :deep(.p-button-sm.p-button-icon-only.p-button-rounded) {
+  height: var(--p-button-icon-only-width);
+}
+
 .settings-tabs :deep(.p-tab) {
   padding: 0.75rem 1rem;
   font-weight: bold;
 }
 
 .settings-tabs :deep(.p-tablist) {
+  flex-shrink: 0;
   border-bottom: 1px solid var(--p-content-border-color);
 }
 

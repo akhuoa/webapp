@@ -1,1 +1,2 @@
+- `celldl.svg` is a simplified, monochrome version of the [CellDL logo](https://github.com/CellDL/CellDLEditorComponent/blob/main/app/src/assets/logo.svg), for use as an icon.
 - `logo.svg` is based off the original VPH logo.

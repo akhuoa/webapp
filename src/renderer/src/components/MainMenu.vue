@@ -52,6 +52,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   about: [];
+  changelog: [];
   close: [];
   closeAll: [];
   open: [];
@@ -151,6 +152,13 @@ const items = vue.computed(() => [
         label: 'Home Page',
         command: () => {
           window.open('https://opencor.ws/');
+        }
+      },
+      { separator: true },
+      {
+        label: 'Changelog',
+        command: () => {
+          emit('changelog');
         }
       },
       { separator: true },

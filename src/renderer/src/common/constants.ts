@@ -11,6 +11,7 @@ export const TOAST_LIFE: number = 3000;
 
 export const SPIN_INITIAL_DELAY: number = 500;
 export const SPIN_REPEAT_DELAY: number = 40;
+export const SPIN_LARGE_STEP_FACTOR: number = 10;
 
 const crtYear: number = new Date().getFullYear();
 

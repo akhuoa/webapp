@@ -8,8 +8,10 @@ import * as vue from 'vue';
 // methods that ensure that we don't attempt to block if we are already blocked, and that we properly remove the mask
 // when unblocking. This is necessary because PrimeVue's BlockUI does not account for the case where multiple block
 // events are emitted before the unblock event is emitted, which can lead to multiple masks being created and not
-// properly removed.
-// Note: this implementation is based on version 4.2.5 of PrimeVue, which is the version we are using in OpenCOR. If we
+// properly removed. On top of that, PrimeVue's BlockUI only considers itself unblocked 300ms after unblocking (once its
+// fallback timer has removed its mask), so if we get blocked again within that time, our block() returns early and
+// leaves us without a mask, after which the fallback timer considers us unblocked while we should still be blocked.
+// Note: this implementation is based on version 4.5.5 of PrimeVue, which is the version we are using in OpenCOR. If we
 //       upgrade to a newer version of PrimeVue, we should check if there are any changes to the BlockUI component that
 //       might affect our implementation.
 
@@ -50,11 +52,11 @@ export default vue.defineComponent({
 
       const mask = document.createElement('div');
 
-      mask.className = 'p-blockui-mask p-overlay-mask p-overlay-mask-enter';
+      mask.className = 'p-blockui-mask p-overlay-mask p-overlay-mask-enter-active';
 
       (self.$refs.container as HTMLElement | null)?.appendChild(mask);
 
-      ZIndex.set('modal', mask, self.baseZIndex + self.$primevue.config.zIndex.modal);
+      ZIndex.set('modal', mask, self.baseZIndex || self.$primevue.config.zIndex.modal);
 
       self.mask = mask;
       self.isBlocked = true;
@@ -100,11 +102,21 @@ export default vue.defineComponent({
       self.$emit('unblock');
     };
 
+    const unblock = (): void => {
+      // Remove the mask and consider ourselves unblocked straight away rather than after PrimeVue's fallback timer (see
+      // above).
+      // Note: our mask would have been removed from the DOM by cleanupMasks() anyway (see OpenCOR.vue), so this only
+      //       ensures that our state is immediately in sync with it.
+
+      removeMask();
+    };
+
     return {
       block,
       cleanupMasks,
       removeMask,
-      removeSpecificMask
+      removeSpecificMask,
+      unblock
     };
   }
 });

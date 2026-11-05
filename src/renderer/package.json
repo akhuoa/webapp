@@ -42,8 +42,8 @@
     },
     "./style.css": "./dist/opencor.css"
   },
-  "version": "1.20261023.0",
-  "libopencorVersion": "1.20261020.0",
+  "version": "1.20261102.0",
+  "libopencorVersion": "1.20261029.0",
   "scripts": {
     "build": "vite build && bun scripts/generate.version.ts",
     "build:lib": "vite build --config vite.lib.config.ts && bun --bun scripts/type.check.ts --project tsconfig.lib.types.json",
@@ -61,37 +61,40 @@
   "peerDependencies": {
     "vue": "^3.5.44"
   },
-  "dependencies": {
-    "@napi-rs/keyring": "^2.1.2",
-    "@opencor/libopencor-types": "^1.20261020.0",
-    "@primeuix/themes": "2.0.3",
-    "@primevue/auto-import-resolver": "4.2.5",
-    "@vueuse/core": "^15.0.0",
-    "primeicons": "7.0.0",
-    "primevue": "4.2.5",
-    "xxhash-wasm": "^1.1.0"
-  },
   "devDependencies": {
-    "@biomejs/biome": "^2.6.2",
+    "@biomejs/biome": "^2.6.4",
+    "@celldl/editor": "^0.20261029.0",
+    "@celldl/rdf": "^1.20260822.0",
+    "@opencor/libopencor-types": "^1.20261029.0",
+    "@physiomelinks/bg2cellml": "^0.6.2",
+    "@primeuix/themes": "2.0.3",
+    "@primevue/auto-import-resolver": "4.5.5",
     "@tailwindcss/postcss": "^4.3.3",
     "@tailwindcss/vite": "^4.3.3",
-    "@types/bun": "^1.4.3",
-    "@types/node": "^26.6.5",
+    "@types/bun": "^1.4.4",
+    "@types/node": "^26.6.6",
     "@vitejs/plugin-vue": "^6.0.10",
     "@vue/tsconfig": "^0.9.1",
-    "autoprefixer": "^10.6.1",
-    "postcss": "^8.5.31",
+    "@vueuse/core": "^15.0.0",
+    "autoprefixer": "^10.6.2",
+    "libcellml.js": "^0.7.2",
+    "oxigraph": "^0.5.13",
+    "postcss": "^8.5.32",
+    "primeicons": "7.0.0",
+    "primevue": "4.5.5",
     "rollup-plugin-visualizer": "^7.1.1",
     "stylelint": "^17.16.0",
     "stylelint-config-standard": "^40.0.0",
     "tailwindcss": "^4.3.3",
     "tailwindcss-primeui": "^0.6.1",
+    "tar": "^7.5.22",
     "typescript": "^7.0.2",
     "typescript-6": "npm:typescript@^6.0.3",
     "unplugin-vue-components": "^32.1.0",
     "uplot": "1.6.32",
     "vite": "^8.3.5",
     "vue": "^3.5.44",
-    "vue-tsc": "^3.3.13"
+    "vue-tsc": "^3.3.14",
+    "xxhash-wasm": "^1.1.0"
   }
 }

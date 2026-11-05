@@ -86,7 +86,11 @@ In addition, you will need to update the `locateFile` callback in `src/renderer/
 
 ### Embedding the `@opencor/opencor` package
 
-The `@opencor/opencor` package does **not** ship `libopencor.js`. At runtime, OpenCOR first tries to import it from your application, using the following URL (relative to your page's base URL):
+The `@opencor/opencor` package does **not** ship libOpenCOR or CellDL Editor. Instead, OpenCOR loads them at runtime, either from your application or from `https://opencor.ws`.
+
+#### libOpenCOR
+
+At runtime, OpenCOR first tries to import `libopencor.js` from your application, using the following URL (relative to your page's base URL):
 
 ```
 libopencor/downloads/wasm/<version>/libopencor.js
@@ -98,6 +102,18 @@ where `<version>` is the value of the `libopencorVersion` field in the package's
 - `script-src` and `worker-src` to allow `blob:`.
 
 If you would rather not fetch `libopencor.js` from `https://opencor.ws`, then you can self-host it by downloading it from `https://opencor.ws/libopencor/downloads/wasm/<version>/libopencor.js` and serving it, as a JavaScript file, from the above URL. Note that `worker-src` must still allow `blob:` since, on the Web, `libopencor.js` always spawns its pthread workers from blob URLs. Make sure to do this again whenever you update the `@opencor/opencor` package, since `<version>` will then change.
+
+#### CellDL Editor
+
+CellDL Editor is big, so OpenCOR only loads it the first time that a CellDL file is opened. It first tries to import it from your application, using the following URL (relative to your page's base URL):
+
+```
+celldl/<hash>/celldl.js
+```
+
+where `<hash>` identifies the build of CellDL Editor used by your version of the `@opencor/opencor` package. If your application doesn't serve it, then OpenCOR imports it from `https://opencor.ws/app/celldl/<hash>/celldl.js`, along with the other JavaScript and WASM files that it needs from the same folder. If your application uses a [Content Security Policy](https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CSP), then this requires `script-src` and `connect-src` to allow `https://opencor.ws`. Also, whether or not CellDL Editor is imported from `https://opencor.ws`, `connect-src` must allow `data:` since CellDL Editor fetches one of its WASM files from a data URL.
+
+If you would rather not import CellDL Editor from `https://opencor.ws`, then you can self-host it by serving the `celldl/<hash>/` folder of OpenCOR's Web app from the above URL. That folder can be found in the archive of OpenCOR's Web app that comes with the [release](https://github.com/opencor/webapp/releases) matching your version of the `@opencor/opencor` package. Make sure to do this again whenever you update the `@opencor/opencor` package, since `<hash>` may then change.
 
 ## Usage
 
@@ -174,7 +190,11 @@ Each instance of OpenCOR has its own theme, so different instances can use diffe
 
 - **Exposed methods:**
 
-  OpenCOR always exposes the following methods, which only have an effect when an `omex` prop is provided:
+  OpenCOR always exposes the following method:
+
+  - `changelog()`: returns the changes for all the versions of OpenCOR up to the current one, as an array of `{ version: string; changes: { type: 'added' | 'removed' | 'improved' | 'fixed'; description: string }[] }` objects (see `IOpenCORChangelogEntry`), from the newest version to the oldest one.
+
+  OpenCOR also always exposes the following methods, which only have an effect when an `omex` prop is provided:
 
   - `trackSimulationData(modelParameters: string[])`: adds the given parameter names to the list of tracked simulation data.
   - `untrackSimulationData(modelParameters: string[])`: removes the given parameter names from the list of tracked simulation data.

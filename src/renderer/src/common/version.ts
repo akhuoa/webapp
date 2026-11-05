@@ -141,4 +141,4 @@ const forceReload = async (): Promise<void> => {
 
 // Export the version checking functions and state.
 
-export { currentVersion, forceReload, latestVersion, startCheck, updateAvailable };
+export { currentVersion, forceReload, isNewerVersion, latestVersion, startCheck, updateAvailable };

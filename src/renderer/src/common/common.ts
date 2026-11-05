@@ -294,6 +294,12 @@ export const downloadFile = (filename: string, content: string | Blob, type: str
   }, DOWNLOAD_OBJECT_URL_LIFETIME);
 };
 
+// A method to get the base file name from a file name, i.e. the file name without its extension.
+
+export const baseFileName = (fileName: string): string => {
+  return fileName.replace(/\.[^/.]+$/, '');
+};
+
 // A method to get the file name from a file path.
 // Note: the file path should be a canonical path (see locApi.File.canonicalPath()), i.e. a path that libOpenCOR has
 //       already decoded, if needed (e.g., "https://example.com/my%20model.cellml" becomes

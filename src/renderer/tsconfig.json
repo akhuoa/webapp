@@ -1,4 +1,7 @@
 {
   "extends": "@vue/tsconfig/tsconfig.dom.json",
-  "include": ["**/*.js", "**/*.ts", "**/*.vue", "package.json"]
+  "include": ["**/*.js", "**/*.ts", "**/*.vue", "package.json"],
+  // Note: our Electron-only files are excluded since they rely on dependencies that are only available in our root
+  //       directory (they get type checked from there, see our root tsconfig.app.json file).
+  "exclude": ["node_modules", "src/common/electron.ts", "src/common/gitHubIntegration.ts"]
 }

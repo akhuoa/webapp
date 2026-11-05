@@ -41,10 +41,11 @@ export const toShadowCssAst = (css: string): string => {
 //          (i.e. after Tailwind CSS has generated our utilities and after @import rules have been inlined), but before
 //          Vite turns our CSS into a JavaScript module (e.g., a string for `?inline` CSS and the styles of our custom
 //          element's components).
-// Note #2: we only process the CSS of our OpenCOR component, i.e. not the CSS of our demo host applications (e.g.,
-//          src/App.vue), which doesn't end up in our shadow root.
+// Note #2: we only process the CSS of our OpenCOR component and that of CellDL Editor (see src/celldl/runtime.ts), i.e.
+//          not the CSS of our demo host applications (e.g., src/App.vue), which doesn't end up in our shadow root.
 
-const OPENCOR_CSS_REGEX = /[\\/]src[\\/]renderer[\\/]src[\\/](?:assets|components)[\\/]/;
+const OPENCOR_CSS_REGEX =
+  /[\\/]src[\\/]renderer[\\/]src[\\/](?:assets|components)[\\/]|[\\/]@celldl[\\/]editor[\\/]dist[\\/]/;
 const CSS_REGEX = /\.css(?:$|\?)|[?&]lang\.css(?:$|&)/;
 
 // The components that are to be compiled as custom element components, i.e. those of our OpenCOR component (but not

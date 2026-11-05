@@ -21,6 +21,7 @@ import type {
   IOpenCORSimulationDataEvent
 } from '../../index';
 
+import * as changelog from '../common/changelog';
 import { ensureOpenCORElement, type IOpenCORElement, OPENCOR_ELEMENT_TAG } from '../element';
 
 // Our OpenCOR component, which is a wrapper around our custom element (see element.ts).
@@ -48,9 +49,11 @@ const onSimulationData = (event: CustomEvent<[IOpenCORSimulationDataEvent]>): vo
   emit('simulationData', event.detail[0]);
 };
 
-// Exposed methods, which we forward to our custom element.
+// Exposed methods, which we forward to our custom element (except for our changelog, which doesn't depend on our
+// custom element, so it is available even before our custom element is mounted).
 
 defineExpose<IOpenCORExpose>({
+  changelog: changelog.changelog,
   addExternalData: (csv: string, voiExpression: string | undefined, modelParameters: string[]): void => {
     elementRef.value?.addExternalData(csv, voiExpression, modelParameters);
   },

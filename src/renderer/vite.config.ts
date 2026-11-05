@@ -11,6 +11,7 @@ import { visualizer as visualizerPlugin } from 'rollup-plugin-visualizer';
 import vitePlugin from 'unplugin-vue-components/vite';
 import * as vite from 'vite';
 
+import { buildCellDLRuntime } from './scripts/celldl.runtime.ts';
 import { downloadLibopencorJsIfNeeded } from './scripts/download.libopencor.js.ts';
 import { libopencorVersion, opencorVersion } from './scripts/libopencor.version.ts';
 import { stripPrimeIconsFontFacePlugin } from './scripts/primeicons.plugin.ts';
@@ -32,11 +33,12 @@ export default vite.defineConfig({
     rolldownOptions: {
       output: {
         // Note: our file names include a hash of their contents, so that they can be cached for a long time (since a
-        //       new version of a file will have a different name, see public/.htaccess). Only index.html and
-        //       assets/version.json have a fixed name, which is why they must never be cached for long (see
-        //       src/common/version.ts and public/.htaccess) and why they must be uploaded last when deploying our Web
-        //       app (see .github/workflows/cd.yml and cddev.yml). This also means that old files are left behind on our
-        //       server, hence we prune them after some time (see scripts/prune.web.ts).
+        //       new version of a file will have a different name, see public/.htaccess). Only index.html,
+        //       assets/version.json, and assets/changelog.json have a fixed name, which is why they must never be cached
+        //       for long (see src/common/version.ts, src/common/changelog.ts, and public/.htaccess) and why index.html
+        //       and assets/version.json must be uploaded last when deploying our Web app (see .github/workflows/cd.yml
+        //       and cddev.yml). This also means that old files are left behind on our server, hence we prune them after
+        //       some time (see scripts/prune.web.ts).
 
         entryFileNames: `assets/[name]-[hash].js`,
         chunkFileNames: `assets/[name]-[hash].js`,
@@ -45,8 +47,9 @@ export default vite.defineConfig({
     },
     target: 'esnext'
   },
-  publicDir: path.join(import.meta.dirname, 'public'),
   define: {
+    __CELLDL_RUNTIME_BUNDLED__: JSON.stringify(false),
+    __CELLDL_RUNTIME_PATH__: JSON.stringify(await buildCellDLRuntime(path.join(import.meta.dirname, 'public'))),
     __LIBOPENCOR_VERSION__: JSON.stringify(libopencorVersion),
     __OPENCOR_VERSION__: JSON.stringify(opencorVersion)
   },
@@ -86,16 +89,17 @@ export default vite.defineConfig({
         ]
       : [])
   ],
-  server: {
-    fs: {
-      allow: [fileURLToPath(new URL('../..', import.meta.url))]
-    },
+  preview: {
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp'
     }
   },
-  preview: {
+  publicDir: path.join(import.meta.dirname, 'public'),
+  server: {
+    fs: {
+      allow: [fileURLToPath(new URL('../..', import.meta.url))]
+    },
     headers: {
       'Cross-Origin-Opener-Policy': 'same-origin',
       'Cross-Origin-Embedder-Policy': 'require-corp'
