@@ -15,6 +15,12 @@ import { buildCellDLRuntime } from './scripts/celldl.runtime.ts';
 import { downloadLibopencorJsIfNeeded } from './scripts/download.libopencor.js.ts';
 import { libopencorVersion, opencorVersion } from './scripts/libopencor.version.ts';
 import { stripPrimeIconsFontFacePlugin } from './scripts/primeicons.plugin.ts';
+import { primeVueCssPlugin } from './scripts/primevue.css.plugin.ts';
+import {
+  OPENCOR_CUSTOM_ELEMENT_COMPONENTS,
+  shadowCssPlugin,
+  shadowStyleNodeTransform
+} from './scripts/shadow.css.plugin.ts';
 
 await downloadLibopencorJsIfNeeded(
   path.join(import.meta.dirname, 'public', 'libopencor', 'downloads', 'wasm', libopencorVersion)
@@ -52,7 +58,17 @@ export default vite.defineConfig({
 
     tailwindcssPlugin(),
     stripPrimeIconsFontFacePlugin(),
+    shadowCssPlugin(),
+    primeVueCssPlugin(),
     vuePlugin({
+      features: {
+        customElement: OPENCOR_CUSTOM_ELEMENT_COMPONENTS
+      },
+      template: {
+        compilerOptions: {
+          nodeTransforms: [shadowStyleNodeTransform]
+        }
+      },
       script: {
         fs: {
           fileExists: (file: string) => fs.existsSync(file),

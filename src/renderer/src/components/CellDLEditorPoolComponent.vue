@@ -3,7 +3,7 @@
     <Teleport v-for="editor in editors" :key="editor.id" :to="editor.client?.container" :disabled="!editor.client?.container">
       <CellDLEditor :ref="(instance) => setInstance(editor, instance)" class="h-full"
         :editorCommand="editor.command"
-        :theme="theme()"
+        :theme="editor.client?.theme() ?? 'system'"
         @editor-data="editor.onEditorData"
         @editor-ready="onEditorReady(editor)"
         @editor-state="editor.onEditorState"
@@ -18,7 +18,6 @@ import * as vue from 'vue';
 
 import { type IPooledCellDLEditor, useCellDLEditorPool } from '../common/celldlEditorPool';
 import { loadCellDLRuntime } from '../common/celldlRuntime';
-import { useTheme } from '../common/vueCommon';
 
 // CellDL Editor, which is part of our CellDL runtime (see common/celldlRuntime.ts).
 // Note: we are only mounted once a CellDL Editor view has loaded our CellDL runtime (see CellDLEditorView.vue), so this
@@ -32,7 +31,6 @@ const CellDLEditor = vue.defineAsyncComponent(async () => (await loadCellDLRunti
 //       common/celldlEditorPool.ts).
 
 const { editors, setFailed } = useCellDLEditorPool();
-const { theme } = useTheme();
 const instances = new Map<number, vue.ComponentPublicInstance>();
 
 const setInstance = (editor: IPooledCellDLEditor, instance: unknown): void => {

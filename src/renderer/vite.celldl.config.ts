@@ -3,6 +3,7 @@ import * as vite from 'vite';
 
 import { scopeCellDLEditorCssPlugin } from './scripts/celldl.plugin.ts';
 import { stripPrimeIconsFontFacePlugin } from './scripts/primeicons.plugin.ts';
+import { shadowCssPlugin } from './scripts/shadow.css.plugin.ts';
 
 // Build our CellDL runtime (see src/common/celldlRuntime.ts), which OpenCOR's Web app and our library load at runtime.
 // Note: this config is used by buildCellDLRuntime() (see scripts/celldl.runtime.ts), which provides the output folder.
@@ -71,6 +72,6 @@ export default vite.defineConfig({
     },
     target: 'esnext'
   },
-  plugins: [stripPrimeIconsFontFacePlugin(), scopeCellDLEditorCssPlugin(), sharedVuePlugin()],
+  plugins: [stripPrimeIconsFontFacePlugin(), scopeCellDLEditorCssPlugin(), shadowCssPlugin(), sharedVuePlugin()],
   publicDir: false
 });

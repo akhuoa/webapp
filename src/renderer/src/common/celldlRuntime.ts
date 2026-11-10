@@ -1,7 +1,7 @@
 import * as vue from 'vue';
 
 import * as common from './common';
-import { attemptUrl, withRetries } from './initialisation';
+import { addDependencyCss, attemptUrl, withRetries } from './initialisation';
 
 // Our CellDL runtime (see src/celldl/runtime.ts).
 
@@ -57,7 +57,7 @@ const importCellDLRuntime = async (): Promise<ICellDLRuntime> => {
   );
 };
 
-// Load our CellDL runtime, if needed, and inject CellDL Editor's stylesheet.
+// Load our CellDL runtime, if needed, and make CellDL Editor's stylesheet available to our shadow root(s).
 // Note: if our CellDL runtime cannot be loaded (e.g., because of a network issue), then we allow for another attempt.
 
 let cellDLRuntime: Promise<ICellDLRuntime> | null = null;
@@ -65,11 +65,12 @@ let cellDLRuntime: Promise<ICellDLRuntime> | null = null;
 export const loadCellDLRuntime = (): Promise<ICellDLRuntime> => {
   cellDLRuntime ??= importCellDLRuntime()
     .then((runtime) => {
-      const style = document.createElement('style');
+      // Note: we don't inject CellDL Editor's stylesheet into the host document's head since it would then leak into a
+      //       host application (and wouldn't apply within our shadow root anyway). Instead, each instance of OpenCOR
+      //       injects it into its shadow root (see shadowStyles.ts). That stylesheet is made suitable for our shadow root
+      //       at build time (see shadowCssPlugin() in scripts/shadow.css.plugin.ts).
 
-      style.textContent = runtime.celldlEditorCss;
-
-      document.head.appendChild(style);
+      addDependencyCss(runtime.celldlEditorCss);
 
       return runtime;
     })

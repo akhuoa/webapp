@@ -62,12 +62,14 @@ import { loadCellDLRuntime } from '../../common/celldlRuntime';
 import * as common from '../../common/common';
 import { LONG_DELAY } from '../../common/constants';
 import { type IFileEditor, useViewRegistry } from '../../common/viewRegistry';
+import * as vueCommon from '../../common/vueCommon';
 import * as locApi from '../../libopencor/locApi';
 
 import { useOpenCORContext } from '../OpenCORContext';
 import { useOpenCORMessage } from '../OpenCORMessage';
 
-import './toolbar-based-view.css';
+// Note: our toolbar-based view styles (see toolbar-based-view.css) are included in our global styles, which live in our
+//       shadow root (see src/assets/app.css).
 
 const EXPORT_KIND_DOWNLOAD = 'download';
 const EXPORT_KIND_SIMULATE = 'simulate';
@@ -129,6 +131,7 @@ const client = vue.reactive({
   active: vue.computed<boolean>(() => props.isActiveFile && isActiveView.value && !issues.value.length),
   activation: 0,
   loaded: false,
+  theme: vueCommon.useTheme().theme,
   onError: (message: string): void => {
     client.loaded = false;
 

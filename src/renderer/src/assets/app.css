@@ -1,10 +1,16 @@
 /* stylelint-disable at-rule-no-unknown, no-invalid-position-at-import-rule */
 @config "../../tailwind.config.ts";
 
-@layer theme, base, components, utilities;
+@layer opencor-reset, theme, base, components, utilities;
 
 /* biome-ignore lint/correctness/noInvalidPositionAtImportRule: ignored using `--suppress` */
 @import "tailwindcss/theme.css" layer(theme);
+
+/* Note: we include Tailwind CSS's preflight since our styles live in a shadow root (see src/element.ts), i.e. we don't
+         get the preflight of a host application (if any), nor should we rely on it. */
+
+/* biome-ignore lint/correctness/noInvalidPositionAtImportRule: ignored using `--suppress` */
+@import "tailwindcss/preflight.css" layer(base);
 
 /* biome-ignore lint/correctness/noInvalidPositionAtImportRule: ignored using `--suppress` */
 @import "tailwindcss/utilities.css" layer(utilities);
@@ -15,256 +21,305 @@
 /* biome-ignore lint/correctness/noInvalidPositionAtImportRule: ignored using `--suppress` */
 @import "primeicons/primeicons.css";
 
+/* Note: the styles that are shared by our simulation experiment views are scoped under `.simulation-experiment-view`, so
+         they can be global (within our shadow root). */
+
+/* biome-ignore lint/correctness/noInvalidPositionAtImportRule: ignored using `--suppress` */
+@import "../components/views/simulation-experiment-view.css";
+
+/* Note: the styles that are shared by our message and question dialogs are scoped under `.message-dialog`, so they can
+         be global (within our shadow root). */
+
+/* biome-ignore lint/correctness/noInvalidPositionAtImportRule: ignored using `--suppress` */
+@import "../components/dialogs/message-dialog.css";
+
 /* Make Tailwind CSS's dark variant follow our theme rather than (necessarily) the system's theme. */
 
 @custom-variant dark (&:where(.opencor-dark-mode, .opencor-dark-mode *));
 
-body {
+/* Our shadow host, i.e. the only element of ours that is in the host document. */
+
+:host {
+  display: block;
+  height: 100%;
+}
+
+/* Use the font of the host application, if requested (see OpenCORCore.vue). */
+
+:host([data-opencor-host-font]) {
+  font-family: inherit;
+}
+
+/* The root element of our shadow root, which resets all the properties that would otherwise be inherited from the host
+   application (e.g., its colour, font, and line height), and which holds our theme.
+   Note: our reset is in the first layer, so that Tailwind CSS's preflight (which, for us, targets this element rather
+         than the html element, see src/common/shadowCss.ts) can then set this element's properties as it would for the
+         html element. */
+
+@layer opencor-reset {
+  .opencor-shadow-root {
+    all: initial;
+  }
+}
+
+.opencor-shadow-root {
+  /* Note: stylelint's value-keyword-case rule doesn't know that this is a font family, so it would lowercase its font
+           names (e.g., BlinkMacSystemFont), some of which are case-sensitive. */
+
+  /* stylelint-disable value-keyword-case */
+  --opencor-font-family:
+    Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans",
+    "Helvetica Neue", sans-serif;
+  /* stylelint-enable value-keyword-case */
+
+  display: block;
+  height: 100%;
+
+  &.opencor-host-font {
+    font-family: inherit;
+  }
+}
+
+.opencor {
+  --border-color: var(--p-content-border-color);
+
+  /**
+   * The background of our masks (e.g., behind a dialog or while our UI is blocked), which is lighter than PrimeVue's
+   * (Aura theme) one.
+   */
+
+  --px-mask-background: rgb(0 0 0 / 25%);
+
+  /**
+   * The colour of our thin scrollbars, which are used where a scroll panel can't be (i.e. where the height of the
+   * scrollable area isn't fixed).
+   * Note: we can't use PrimeVue's scroll panel colour since it is only defined once a scroll panel is used.
+   */
+
+  --opencor-scrollbar-color: var(--p-surface-300);
+
+  /**
+   * The shadows of our overlays (e.g., the menus of our main menu, our context menus, our popovers, or our hints) and
+   * of our cards (e.g., our blocking message or our toasts).
+   */
+
+  --opencor-overlay-shadow: 0 8px 24px -4px rgb(0 0 0 / 12%), 0 2px 6px -2px rgb(0 0 0 / 8%);
+  --opencor-card-shadow: 0 0.25rem 1rem rgb(0 0 0 / 12%);
+
+  /**
+   * The colours of our hints (e.g., the tooltip of our toolbar buttons), which are those of PrimeVue's popovers, so
+   * that our hints look like our other overlays (e.g., our menus and popovers) in both light and dark modes.
+   */
+
+  --opencor-hint-background: var(--p-overlay-popover-background);
+  --opencor-hint-border-color: var(--p-overlay-popover-border-color);
+  --opencor-hint-color: var(--p-overlay-popover-color);
+  --opencor-hint-muted-color: var(--p-text-muted-color);
+  --opencor-hint-code-background: var(--p-content-hover-background);
+
+  /**
+   * Our severity colours, which are those of PrimeVue's Message component (Aura theme).
+   * Note: PrimeVue only defines the colours of a component (e.g., --p-message-error-color) once that component is
+   *       used, so we can't rely on them (and therefore have our own).
+   */
+
+  --opencor-success-background: color-mix(in sRGB, var(--p-green-50), transparent 5%);
+  --opencor-success-border-color: var(--p-green-200);
+  --opencor-success-color: var(--p-green-600);
+  --opencor-info-background: color-mix(in sRGB, var(--p-blue-50), transparent 5%);
+  --opencor-info-border-color: var(--p-blue-200);
+  --opencor-info-color: var(--p-blue-600);
+  --opencor-warn-background: color-mix(in sRGB, var(--p-yellow-50), transparent 5%);
+  --opencor-warn-border-color: var(--p-yellow-200);
+  --opencor-warn-color: var(--p-yellow-600);
+  --opencor-error-background: color-mix(in sRGB, var(--p-red-50), transparent 5%);
+  --opencor-error-border-color: var(--p-red-200);
+  --opencor-error-color: var(--p-red-600);
+
   *,
   ::before,
   ::after {
-    box-sizing: initial;
+    box-sizing: border-box;
   }
 
-  .opencor {
-    --border-color: var(--p-content-border-color);
+  background-color: var(--p-content-background);
+  color: var(--p-content-color);
+  margin: 0;
+  font-family: var(--opencor-font-family);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  user-select: none;
 
-    /**
-     * The background of our masks (e.g., behind a dialog or while our UI is blocked), which is lighter than PrimeVue's
-     * (Aura theme) one.
-     */
+  .opencor-host-font & {
+    font-family: inherit;
+  }
 
-    --px-mask-background: rgb(0 0 0 / 25%);
+  .p-contextmenu-item-content,
+  .p-contextmenu-item-link {
+    color: var(--p-contextmenu-item-color, var(--p-text-color));
+  }
 
-    /**
-     * The colour of our thin scrollbars, which are used where a scroll panel can't be (i.e. where the height of the
-     * scrollable area isn't fixed).
-     * Note: we can't use PrimeVue's scroll panel colour since it is only defined once a scroll panel is used.
-     */
+  a {
+    color: var(--p-button-link-color);
+  }
 
-    --opencor-scrollbar-color: var(--p-surface-300);
+  :focus {
+    outline: none !important;
+  }
 
-    /**
-     * The shadows of our overlays (e.g., the menus of our main menu, our context menus, our popovers, or our hints) and
-     * of our cards (e.g., our blocking message or our toasts).
-     */
+  /**
+   * Show a focus ring when a PrimeVue component (or a link) gets the keyboard focus.
+   * Note #1: PrimeVue's focus rings are outlines, which we remove above (so that the browser's focus outline doesn't
+   *          get shown on top of the focus rings that we draw for our own controls), so we draw them using a box
+   *          shadow instead. This is not needed for the components that draw their focus ring on an element that
+   *          doesn't itself get the focus (e.g., a checkbox or a toggle switch).
+   * Note #2: our focus ring is offset from the component (like PrimeVue's), so that it is visible on a filled
+   *          button (e.g., a primary button).
+   * Note #3: our focus ring is shown without any animation (PrimeVue would otherwise transition it in).
+   */
 
-    --opencor-overlay-shadow: 0 8px 24px -4px rgb(0 0 0 / 12%), 0 2px 6px -2px rgb(0 0 0 / 8%);
-    --opencor-card-shadow: 0 0.25rem 1rem rgb(0 0 0 / 12%);
+  .p-button:focus-visible,
+  .p-slider-handle:focus-visible,
+  .p-splitter-gutter-handle:focus-visible,
+  a:focus-visible {
+    box-shadow:
+      0 0 0 2px var(--p-content-background),
+      0 0 0 4px var(--opencor-focus-ring-color, var(--p-primary-color));
+    transition: none;
+  }
 
-    /**
-     * The colours of our hints (e.g., the tooltip of our toolbar buttons), which are those of PrimeVue's popovers, so
-     * that our hints look like our other overlays (e.g., our menus and popovers) in both light and dark modes.
-     */
+  /**
+   * Note: like a primary button (which focus ring has our primary colour, i.e. its background colour), a danger
+   *       button (e.g., the Reset All button of our Reset All dialog) has a focus ring of its background colour. We
+   *       fall back to our error colour, just in case PrimeVue hasn't defined the background colour of a danger
+   *       button (it only defines the colours of a component once that component is used).
+   */
 
-    --opencor-hint-background: var(--p-overlay-popover-background);
-    --opencor-hint-border-color: var(--p-overlay-popover-border-color);
-    --opencor-hint-color: var(--p-overlay-popover-color);
-    --opencor-hint-muted-color: var(--p-text-muted-color);
-    --opencor-hint-code-background: var(--p-content-hover-background);
+  .p-button-danger:focus-visible {
+    --opencor-focus-ring-color: var(--p-button-danger-background, var(--opencor-error-color));
+  }
 
-    /**
-     * Our severity colours, which are those of PrimeVue's Message component (Aura theme).
-     * Note: PrimeVue only defines the colours of a component (e.g., --p-message-error-color) once that component is
-     *       used, so we can't rely on them (and therefore have our own).
-     */
+  a:focus-visible {
+    border-radius: 0.125rem;
+  }
 
-    --opencor-success-background: color-mix(in sRGB, var(--p-green-50), transparent 5%);
-    --opencor-success-border-color: var(--p-green-200);
-    --opencor-success-color: var(--p-green-600);
-    --opencor-info-background: color-mix(in sRGB, var(--p-blue-50), transparent 5%);
-    --opencor-info-border-color: var(--p-blue-200);
-    --opencor-info-color: var(--p-blue-600);
-    --opencor-warn-background: color-mix(in sRGB, var(--p-yellow-50), transparent 5%);
-    --opencor-warn-border-color: var(--p-yellow-200);
-    --opencor-warn-color: var(--p-yellow-600);
-    --opencor-error-background: color-mix(in sRGB, var(--p-red-50), transparent 5%);
-    --opencor-error-border-color: var(--p-red-200);
-    --opencor-error-color: var(--p-red-600);
+  /**
+   * Make the buttons in the footer of our dialogs small (like the rest of our dialogs' contents), but not so small
+   * that a short button (e.g., OK) becomes hard to click.
+   */
 
-    *,
-    ::before,
-    ::after {
-      box-sizing: border-box;
-    }
+  .p-dialog-footer .p-button:not(.p-button-icon-only) {
+    min-width: 4.5rem;
+    padding: var(--p-button-sm-padding-y) var(--p-button-sm-padding-x);
+    font-size: var(--p-button-sm-font-size);
+  }
 
-    background-color: var(--p-content-background);
-    color: var(--p-content-color);
-    margin: 0;
-    font-family:
-      Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans",
-      "Droid Sans", "Helvetica Neue", sans-serif;
-    text-rendering: optimizeLegibility;
-    -webkit-font-smoothing: antialiased;
-    -moz-osx-font-smoothing: grayscale;
-    user-select: none;
+  /**
+   * Show and hide our masks without any animation (see also BaseDialog.vue).
+   */
 
-    .p-contextmenu-item-content,
-    .p-contextmenu-item-link {
-      color: var(--p-contextmenu-item-color, var(--p-text-color));
-    }
+  .p-overlay-mask-enter-active,
+  .p-overlay-mask-leave-active {
+    animation: none;
+  }
 
-    a {
-      color: var(--p-button-link-color);
-    }
+  /**
+   * Show and hide our anchored overlays (e.g., the options of a select, a popover, or a context menu) without any
+   * animation.
+   */
 
-    :focus {
-      outline: none !important;
-    }
+  .p-anchored-overlay-enter-active,
+  .p-anchored-overlay-leave-active {
+    animation: none;
+    transition: none;
+  }
 
-    /**
-     * Show a focus ring when a PrimeVue component (or a link) gets the keyboard focus.
-     * Note #1: PrimeVue's focus rings are outlines, which we remove above (so that the browser's focus outline doesn't
-     *          get shown on top of the focus rings that we draw for our own controls), so we draw them using a box
-     *          shadow instead. This is not needed for the components that draw their focus ring on an element that
-     *          doesn't itself get the focus (e.g., a checkbox or a toggle switch).
-     * Note #2: our focus ring is offset from the component (like PrimeVue's), so that it is visible on a filled
-     *          button (e.g., a primary button).
-     * Note #3: our focus ring is shown without any animation (PrimeVue would otherwise transition it in).
-     */
+  /**
+   * Make the options of our selects and our popovers look like the menus of our main menu.
+   */
 
-    .p-button:focus-visible,
-    .p-slider-handle:focus-visible,
-    .p-splitter-gutter-handle:focus-visible,
-    a:focus-visible {
-      box-shadow:
-        0 0 0 2px var(--p-content-background),
-        0 0 0 4px var(--opencor-focus-ring-color, var(--p-primary-color));
-      transition: none;
-    }
+  .p-select-overlay {
+    --p-select-overlay-border-radius: 0.5rem;
+    --p-select-overlay-shadow: var(--opencor-overlay-shadow);
+    --p-select-list-padding: 0.25rem;
+    --p-select-list-gap: 0;
+    --p-select-option-padding: 0.375rem 0.5rem;
+    --p-select-list-header-padding: 0.25rem 0.25rem 0;
 
-    /**
-     * Note: like a primary button (which focus ring has our primary colour, i.e. its background colour), a danger
-     *       button (e.g., the Reset All button of our Reset All dialog) has a focus ring of its background colour. We
-     *       fall back to our error colour, just in case PrimeVue hasn't defined the background colour of a danger
-     *       button (it only defines the colours of a component once that component is used).
-     */
+    font-size: 0.875rem;
 
-    .p-button-danger:focus-visible {
-      --opencor-focus-ring-color: var(--p-button-danger-background, var(--opencor-error-color));
-    }
-
-    a:focus-visible {
-      border-radius: 0.125rem;
-    }
-
-    /**
-     * Make the buttons in the footer of our dialogs small (like the rest of our dialogs' contents), but not so small
-     * that a short button (e.g., OK) becomes hard to click.
-     */
-
-    .p-dialog-footer .p-button:not(.p-button-icon-only) {
-      min-width: 4.5rem;
-      padding: var(--p-button-sm-padding-y) var(--p-button-sm-padding-x);
-      font-size: var(--p-button-sm-font-size);
-    }
-
-    /**
-     * Show and hide our masks without any animation (see also BaseDialog.vue).
-     */
-
-    .p-overlay-mask-enter-active,
-    .p-overlay-mask-leave-active {
-      animation: none;
-    }
-
-    /**
-     * Show and hide our anchored overlays (e.g., the options of a select, a popover, or a context menu) without any
-     * animation.
-     */
-
-    .p-anchored-overlay-enter-active,
-    .p-anchored-overlay-leave-active {
-      animation: none;
-      transition: none;
-    }
-
-    /**
-     * Make the options of our selects and our popovers look like the menus of our main menu.
-     */
-
-    .p-select-overlay {
-      --p-select-overlay-border-radius: 0.5rem;
-      --p-select-overlay-shadow: var(--opencor-overlay-shadow);
-      --p-select-list-padding: 0.25rem;
-      --p-select-list-gap: 0;
-      --p-select-option-padding: 0.375rem 0.5rem;
-      --p-select-list-header-padding: 0.25rem 0.25rem 0;
-
+    .p-select-filter {
+      padding: 0.25rem 2rem 0.25rem 0.5rem;
       font-size: 0.875rem;
-
-      .p-select-filter {
-        padding: 0.25rem 2rem 0.25rem 0.5rem;
-        font-size: 0.875rem;
-      }
-
-      .p-select-list-container {
-        scrollbar-width: thin;
-        scrollbar-color: var(--opencor-scrollbar-color) transparent;
-      }
     }
 
-    /**
-     * Our context menus (e.g., the one of our graph panels or of our file tabs), which look like the menus of our main
-     * menu (see MainMenu.vue).
-     * Note: our context menus use an item template (see ContextMenuWidget.vue), which shows an icon
-     *       (.context-menu-item-icon), a label, and, for an item that has a submenu, a chevron
-     *       (.context-menu-item-chevron).
-     */
+    .p-select-list-container {
+      scrollbar-width: thin;
+      scrollbar-color: var(--opencor-scrollbar-color) transparent;
+    }
+  }
 
-    .opencor-context-menu {
-      --p-contextmenu-list-padding: 0.25rem;
-      --p-contextmenu-list-gap: 0;
-      --p-contextmenu-item-padding: 0.375rem 0.5rem;
-      --p-contextmenu-border-radius: 0.5rem;
-      --p-contextmenu-shadow: var(--opencor-overlay-shadow);
+  /**
+   * Our context menus (e.g., the one of our graph panels or of our file tabs), which look like the menus of our main
+   * menu (see MainMenu.vue).
+   * Note: our context menus use an item template (see ContextMenuWidget.vue), which shows an icon
+   *       (.context-menu-item-icon), a label, and, for an item that has a submenu, a chevron
+   *       (.context-menu-item-chevron).
+   */
 
-      min-width: 12rem;
+  .opencor-context-menu {
+    --p-contextmenu-list-padding: 0.25rem;
+    --p-contextmenu-list-gap: 0;
+    --p-contextmenu-item-padding: 0.375rem 0.5rem;
+    --p-contextmenu-border-radius: 0.5rem;
+    --p-contextmenu-shadow: var(--opencor-overlay-shadow);
+
+    min-width: 12rem;
+    font-size: 0.875rem;
+
+    .p-contextmenu-submenu {
+      min-width: 9rem;
+      margin-top: calc(-1 * var(--p-contextmenu-list-padding) - 1px);
+      margin-left: 0.25rem;
+    }
+
+    .p-contextmenu-separator {
+      margin: 0.125rem 0.5rem;
+    }
+
+    .context-menu-item-icon {
+      width: 1rem;
+      color: var(--p-text-muted-color);
       font-size: 0.875rem;
+      text-align: center;
+    }
 
-      .p-contextmenu-submenu {
-        min-width: 9rem;
-        margin-top: calc(-1 * var(--p-contextmenu-list-padding) - 1px);
-        margin-left: 0.25rem;
-      }
+    .context-menu-item-chevron {
+      margin-left: auto;
+      padding-left: 1.5rem;
+      color: var(--p-text-muted-color);
+      font-size: 0.75rem;
+    }
 
-      .p-contextmenu-separator {
-        margin: 0.125rem 0.5rem;
-      }
-
-      .context-menu-item-icon {
-        width: 1rem;
-        color: var(--p-text-muted-color);
-        font-size: 0.875rem;
-        text-align: center;
-      }
-
+    .p-contextmenu-item-active > .p-contextmenu-item-content,
+    .p-contextmenu-item.p-focus > .p-contextmenu-item-content {
+      .context-menu-item-icon,
       .context-menu-item-chevron {
-        margin-left: auto;
-        padding-left: 1.5rem;
-        color: var(--p-text-muted-color);
-        font-size: 0.75rem;
-      }
-
-      .p-contextmenu-item-active > .p-contextmenu-item-content,
-      .p-contextmenu-item.p-focus > .p-contextmenu-item-content {
-        .context-menu-item-icon,
-        .context-menu-item-chevron {
-          color: var(--p-text-color);
-        }
+        color: var(--p-text-color);
       }
     }
+  }
 
-    /**
-     * Note: the contents of our popovers (e.g., our issues view) have their own padding, so our popovers don't need
-     *       any.
-     */
+  /**
+   * Note: the contents of our popovers (e.g., our issues view) have their own padding, so our popovers don't need
+   *       any.
+   */
 
-    .p-popover {
-      --p-popover-border-radius: 0.5rem;
-      --p-popover-shadow: var(--opencor-overlay-shadow);
-      --p-popover-content-padding: 0;
-    }
+  .p-popover {
+    --p-popover-border-radius: 0.5rem;
+    --p-popover-shadow: var(--opencor-overlay-shadow);
+    --p-popover-content-padding: 0;
   }
 }
 

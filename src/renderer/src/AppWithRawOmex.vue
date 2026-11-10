@@ -141,7 +141,3 @@ const rawLorenzOmexFile = vue.ref<Uint8Array>(
   ])
 );
 </script>
-
-<style>
-@import "tailwindcss/preflight.css" layer(base);
-</style>

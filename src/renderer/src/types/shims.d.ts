@@ -1,6 +1,8 @@
 // TypeScript shims for Vite-style imports.
 // Note: `vue-tsc` needs to know how to treat `.vue` files and Vite-style asset imports.
 
+/// <reference types="vite/client" />
+
 declare const __CELLDL_RUNTIME_BUNDLED__: boolean;
 declare const __CELLDL_RUNTIME_PATH__: string;
 declare const __LIBOPENCOR_VERSION__: string;
@@ -44,4 +46,9 @@ declare module 'libcellml.js' {
   const createLibCellML: () => Promise<import('@physiomelinks/bg2cellml').Runtime['libcellml']>;
 
   export default createLibCellML;
+}
+
+declare module 'virtual:opencor-primevue-css' {
+  export const css: string;
+  export const styles: { css?: unknown }[];
 }

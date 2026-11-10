@@ -4,7 +4,6 @@ import vuePlugin from '@vitejs/plugin-vue';
 
 import * as path from 'node:path';
 import * as fs from 'node:fs';
-import * as postcss from 'postcss';
 import vitePlugin from 'unplugin-vue-components/vite';
 import * as vite from 'vite';
 
@@ -12,6 +11,12 @@ import { buildCellDLRuntime } from './scripts/celldl.runtime.ts';
 import { downloadLibopencorJsIfNeeded } from './scripts/download.libopencor.js.ts';
 import { libopencorVersion, opencorVersion } from './scripts/libopencor.version.ts';
 import { stripPrimeIconsFontFacePlugin } from './scripts/primeicons.plugin.ts';
+import { primeVueCssPlugin } from './scripts/primevue.css.plugin.ts';
+import {
+  OPENCOR_CUSTOM_ELEMENT_COMPONENTS,
+  shadowCssPlugin,
+  shadowStyleNodeTransform
+} from './scripts/shadow.css.plugin.ts';
 
 await downloadLibopencorJsIfNeeded(
   path.join(import.meta.dirname, 'public', 'libopencor', 'downloads', 'wasm', libopencorVersion)
@@ -59,53 +64,38 @@ export default vite.defineConfig({
     __OPENCOR_VERSION__: JSON.stringify(opencorVersion)
   },
   plugins: [
-    // Note: this must be in sync with vite.config.ts, except for the process-css-layers plugin which is only needed for
-    //       the library build (to prevent styles from leaking into and being overridden by host apps).
+    // Note: this must be in sync with vite.config.ts, except for the style-css-stub plugin, which is only needed for the
+    //       library build.
 
     {
-      // Plugin to process CSS layers for library distribution:
-      //  1. Strip @layer base blocks (Tailwind CSS preflight) to prevent leaking into host apps.
-      //  2. Unwrap remaining @layer blocks so that the important: '.opencor' selector strategy provides real
-      //     specificity protection against host app CSS. (Layered CSS always loses to unlayered CSS, regardless of
-      //     specificity.)
-      //  3. Remove bare @layer ordering declarations.
+      // Plugin to emit an empty dist/opencor.css file.
+      // Note: our styles are now injected into our shadow root (see src/common/shadowStyles.ts), so there is no CSS
+      //       file for host applications to import anymore. However, host applications may still import
+      //       @opencor/opencor/style.css, so we keep providing it (as an empty file), so that they don't break.
 
-      name: 'process-css-layers',
-      enforce: 'post' as const,
-      generateBundle(_options, bundle) {
-        for (const asset of Object.values(bundle)) {
-          if (asset.type === 'asset' && typeof asset.source === 'string' && asset.fileName.endsWith('.css')) {
-            // Process @layer blocks through a CSS AST:
-            //  1. Remove @layer base blocks;
-            //  2. Unwrap remaining @layer blocks; and
-            //  3. Remove bare @layer ordering declarations.
-
-            const root = postcss.parse(asset.source);
-
-            root.walkAtRules('layer', (atRule) => {
-              if (!atRule.nodes || atRule.nodes.length === 0) {
-                atRule.remove();
-
-                return;
-              }
-
-              if (atRule.params.trim() === 'base') {
-                atRule.remove();
-
-                return;
-              }
-
-              atRule.replaceWith(...atRule.nodes);
-            });
-
-            asset.source = root.toString();
-          }
-        }
+      name: 'style-css-stub',
+      generateBundle() {
+        this.emitFile({
+          type: 'asset',
+          fileName: 'opencor.css',
+          source:
+            '/* OpenCOR now injects its styles into its shadow root, so there is no need to import this file anymore. */\n'
+        });
       }
     },
     tailwindcssPlugin(),
     stripPrimeIconsFontFacePlugin(),
+    shadowCssPlugin(),
+    primeVueCssPlugin(),
     vuePlugin({
+      features: {
+        customElement: OPENCOR_CUSTOM_ELEMENT_COMPONENTS
+      },
+      template: {
+        compilerOptions: {
+          nodeTransforms: [shadowStyleNodeTransform]
+        }
+      },
       script: {
         fs: {
           fileExists: (file: string) => fs.existsSync(file),

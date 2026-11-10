@@ -16,7 +16,8 @@
 </template>
 
 <script setup lang="ts">
-import './message-dialog.css';
+// Note: our message dialog styles (see message-dialog.css) are included in our global styles, which live in our shadow
+//       root (see src/assets/app.css).
 
 type Severity = 'info' | 'success' | 'warning' | 'danger';
 

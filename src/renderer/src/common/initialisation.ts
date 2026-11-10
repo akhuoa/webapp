@@ -3,6 +3,7 @@ import * as vue from 'vue';
 import * as common from './common';
 import * as dependencies from './dependencies';
 import { electronApi } from './electronApi';
+import { toShadowCss } from './shadowCss';
 
 import * as locApi from '../libopencor/locApi';
 import type { MainModule as IWasmLocApi } from '@opencor/libopencor-types';
@@ -304,6 +305,19 @@ const importLibOpenCORGlueFromOpencorWs = async (): Promise<WasmFactory> => {
 
 const injectedCss = new Set<string>();
 
+// The CSS of our external dependencies.
+// Note: we don't inject that CSS into the host document's head since it would then leak into a host application (and
+//       wouldn't apply within our shadow root anyway). Instead, each instance of OpenCOR injects it into its shadow root
+//       (see shadowStyles.ts).
+
+export const dependenciesCss = vue.shallowRef<string[]>([]);
+
+// Note: the given CSS must already be suitable for our shadow root (see shadowCss.ts).
+
+export const addDependencyCss = (css: string): void => {
+  dependenciesCss.value = [...dependenciesCss.value, css];
+};
+
 const createLazyInitialiser = (
   name: string,
   url: string,
@@ -320,7 +334,7 @@ const createLazyInitialiser = (
 
       ++crtNbOfSteps.value;
 
-      // Fetch any CSS for the module and inject it into the page if we haven't already done so.
+      // Fetch any CSS for the module and keep track of it (see dependenciesCss) if we haven't already done so.
 
       if (cssUrl) {
         if (!injectedCss.has(cssUrl)) {
@@ -345,11 +359,7 @@ const createLazyInitialiser = (
             });
           }
 
-          const style = document.createElement('style');
-
-          style.textContent = cssText;
-
-          document.head.appendChild(style);
+          addDependencyCss(toShadowCss(cssText));
 
           injectedCss.add(cssUrl);
         }

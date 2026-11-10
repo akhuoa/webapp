@@ -145,8 +145,6 @@ import * as locSedApi from '../../libopencor/locSedApi';
 import { useOpenCORContext, useOpenCORKeyStroke } from '../OpenCORContext';
 import type { IGraphPanelData } from '../widgets/GraphPanelWidget.vue';
 
-import './simulation-experiment-view.css';
-
 const props = defineProps<{
   file: locApi.File;
   isActiveFile: boolean;

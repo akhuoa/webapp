@@ -1,6 +1,8 @@
 import type { CellDLEditorCommand, EditorData } from '@celldl/editor';
 import * as vueusecore from '@vueuse/core';
 
+import type { OpenCORTheme } from '../../index';
+
 import * as vue from 'vue';
 
 import * as common from './common';
@@ -25,6 +27,9 @@ export interface ICellDLEditorClient {
   active: boolean;
   activation: number;
   loaded: boolean;
+  // Note: each OpenCOR instance has its own theme (see provideTheme() in vueCommon.ts), so a CellDL Editor uses the
+  //       theme of the OpenCOR instance of the client that has acquired it (see CellDLEditorPoolComponent.vue).
+  theme: () => OpenCORTheme;
   onError: (message: string) => void;
   onFileEdited: () => void;
 }
@@ -345,9 +350,11 @@ export const useCellDLEditorPool = vueusecore.createGlobalState(() => {
 
   // Simulate a pointer press in the CellDL Editor that should handle keyboard events whenever it changes, i.e. the
   // CellDL Editor of our target client or, if there is none, a spare CellDL Editor.
-  // Note: CellDL Editor checks whether a pointer press occurred within one of its instances during the capture phase of
-  //       the document, so our pointer press doesn't need to bubble up (and it is better that it doesn't since nothing
-  //       else should handle it).
+  // Note #1: CellDL Editor checks whether a pointer press occurred within one of its instances during the capture phase
+  //          of the document, so our pointer press doesn't need to bubble up (and it is better that it doesn't since
+  //          nothing else should handle it).
+  // Note #2: our pointer press must be composed since our CellDL Editor may be within our shadow root (see
+  //          src/element.ts), in which case it would otherwise never reach the document.
 
   vue.watch(
     () => {
@@ -358,7 +365,7 @@ export const useCellDLEditorPool = vueusecore.createGlobalState(() => {
       );
     },
     (root) => {
-      root?.dispatchEvent(new PointerEvent('pointerdown'));
+      root?.dispatchEvent(new PointerEvent('pointerdown', { composed: true }));
     }
   );
 

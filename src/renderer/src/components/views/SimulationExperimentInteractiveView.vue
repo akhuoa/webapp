@@ -232,8 +232,6 @@ import GraphPanelWidget from '../widgets/GraphPanelWidget.vue';
 import InputWidget from '../widgets/InputWidget.vue';
 import type { IGraphPanelData, IGraphPanelMargins, IGraphPanelPlotTrace } from '../widgets/GraphPanelWidget.vue';
 
-import './simulation-experiment-view.css';
-
 interface ISimulationRun {
   id: string;
   inputParameters: Record<string, number>;

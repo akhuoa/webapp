@@ -34,9 +34,22 @@ export const useNarrowLayout = (elementRef: vue.Ref<HTMLElement | null>): vue.Re
 
 export const activeInstanceUid = vueusecore.createGlobalState(() => vue.ref<string | null>(null));
 
-// A composable to know whether OpenCOR uses light mode, dark mode, or system mode.
+// A composable to know whether an instance of OpenCOR uses light mode, dark mode, or system mode.
+// Note: each instance of OpenCOR has its own theme (see provideTheme()), which it applies to its own shadow root (see
+//       OpenCORCore.vue), so that different instances can use different themes (e.g., if a host application gives them
+//       different themes) and so that our theme doesn't affect a host application.
 
-export const useTheme = vueusecore.createGlobalState(() => {
+export interface ITheme {
+  theme: () => OpenCORTheme;
+  setTheme: (newTheme: OpenCORTheme | undefined) => void;
+  applyTheme: (newTheme: OpenCORTheme) => void;
+  useLightMode: () => boolean;
+  useDarkMode: () => boolean;
+}
+
+const ThemeKey: vue.InjectionKey<ITheme> = Symbol('Theme');
+
+export const provideTheme = (): ITheme => {
   const prefersColorScheme = window.matchMedia('(prefers-color-scheme: light)');
   const isLightMode = vue.ref(prefersColorScheme.matches);
   const isDarkMode = vue.ref(!prefersColorScheme.matches);
@@ -47,16 +60,16 @@ export const useTheme = vueusecore.createGlobalState(() => {
     isDarkMode.value = !prefersColorScheme.matches;
   };
 
-  const updateDocumentClasses = () => {
-    document.documentElement.classList.toggle('opencor-light-mode', isLightMode.value);
-    document.documentElement.classList.toggle('opencor-dark-mode', isDarkMode.value);
-  };
-
-  prefersColorScheme.addEventListener('change', (event) => {
+  const onPrefersColorSchemeChange = (event: MediaQueryListEvent) => {
     if (_theme.value === 'system') {
       updateLightAndDarkModes(event);
-      updateDocumentClasses();
     }
+  };
+
+  prefersColorScheme.addEventListener('change', onPrefersColorSchemeChange);
+
+  vue.onScopeDispose(() => {
+    prefersColorScheme.removeEventListener('change', onPrefersColorSchemeChange);
   });
 
   const theme = (): OpenCORTheme => {
@@ -78,8 +91,6 @@ export const useTheme = vueusecore.createGlobalState(() => {
     } else {
       updateLightAndDarkModes(prefersColorScheme);
     }
-
-    updateDocumentClasses();
   };
 
   const applyTheme = (newTheme: OpenCORTheme) => {
@@ -99,14 +110,28 @@ export const useTheme = vueusecore.createGlobalState(() => {
     return isDarkMode.value;
   };
 
-  return {
+  const res: ITheme = {
     theme,
     setTheme,
     applyTheme,
     useLightMode,
     useDarkMode
   };
-});
+
+  vue.provide(ThemeKey, res);
+
+  return res;
+};
+
+export const useTheme = (): ITheme => {
+  const res = vue.inject(ThemeKey, undefined);
+
+  if (!res) {
+    throw new Error('useTheme() must be called within a component that has provideTheme() in its ancestor tree.');
+  }
+
+  return res;
+};
 
 // A composable to track the height of an element as a CSS variable.
 
@@ -221,7 +246,9 @@ const overlayContainer = (opencor: Element, containerClass: string): IOverlayCon
 //
 // Keeping the container inside `.opencor` also ensures that overlays are visible when the host app uses full-screen
 // mode (the Fullscreen API only renders the full-screen element and its CSS descendants), and that they inherit
-// `.opencor`'s CSS properties through the DOM tree.
+// `.opencor`'s CSS properties through the DOM tree. It also ensures that overlays are within our shadow root, which is
+// where our styles apply (see src/element.ts). So, an overlay must never be appended to the host document's body (e.g.,
+// using `appendTo="body"`, which is PrimeVue's default).
 
 export const useAppendTarget = (ancestorRef: vue.Ref<HTMLElement | null>) => {
   const appendTarget = vue.shallowRef<HTMLElement | undefined>(undefined);

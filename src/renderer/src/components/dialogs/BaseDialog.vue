@@ -15,7 +15,7 @@
       style: 'padding-bottom: 0'
     }"
     :pt:footer="{
-      style: 'padding-top: 1.25rem'
+      style: 'padding-top: 20px'
     }"
     :pt:transition="{ css: false }"
     @show="onShow"

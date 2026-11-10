@@ -292,6 +292,8 @@ vue.onMounted(() => {
     mutationObserver.observe(menuBarElement, { attributes: true, attributeFilter: ['class'] });
 
     // Close the menu when clicking on the menubar but outside of the main menu items.
+    // Note: we listen to the document, but event.target is the element that was actually clicked within our shadow root
+    //       (see src/common/shadowCompat.ts).
 
     const onClick = (event: MouseEvent) => {
       const target = event.target as Node;
@@ -299,7 +301,7 @@ vue.onMounted(() => {
       if (
         menuBarElement.contains(target) &&
         !menuBarElement.querySelector('.p-menubar-root-list')?.contains(target) &&
-        !Array.from(document.querySelectorAll('.p-menubar-submenu')).some((submenu) => submenu.contains(target))
+        !Array.from(menuBarElement.querySelectorAll('.p-menubar-submenu')).some((submenu) => submenu.contains(target))
       ) {
         menuBarRef.value?.hide();
       }
