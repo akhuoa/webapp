@@ -1,30 +1,20 @@
 <template>
-  <Fieldset :legend="name">
-    <DataTable
-      :editMode="disabled ? undefined : 'cell'"
-      resizableColumns
-      showGridlines
-      size="small"
-      :value="properties"
-      @cell-edit-complete="onCellEditComplete"
-    >
-      <Column field="property" header="Property" :style="columnWidth" />
-      <Column field="value" header="Value" :style="columnWidth">
-        <template #body="{ data, field }">
-          {{ data[field as string] }}
-        </template>
-        <template v-if="!disabled" #editor="{ data, field }">
-          <InputNumber fluid :maxFractionDigits="15" v-model="data[field]" size="small" />
-        </template>
-      </Column>
-      <Column v-if="hasUnits" field="unit" header="Unit" :style="columnWidth" />
-    </DataTable>
-  </Fieldset>
+  <section class="property-editor">
+    <h3 class="opencor-section-title opencor-section-title-small">{{ name }}</h3>
+    <div class="property-editor-fields">
+      <InputScientificNumberWidget v-for="(property, index) in properties" :key="property.property"
+        :ref="(element: unknown) => (fieldRefs[index] = element as IInputScientificNumberWidget | null)"
+        :modelValue="property.value"
+        :label="hasUnits && property.unit ? `${property.property} (${property.unit})` : property.property"
+        :disabled="disabled"
+        size="small"
+        @update:modelValue="(newValue: number | undefined) => onValueUpdated(index, newValue)"
+      />
+    </div>
+  </section>
 </template>
 
 <script setup lang="ts">
-import type { DataTableCellEditCompleteEvent } from 'primevue/datatable';
-
 const props = withDefaults(
   defineProps<{
     name: string;
@@ -46,33 +36,55 @@ const emit = defineEmits<{
   propertyUpdated: [index: number, newValue: number];
 }>();
 
-const columnWidth = `width: calc(100% / ${props.hasUnits ? '3' : '2'});`;
+// The input fields of our properties, which we use to have a property's input field show its current value again when
+// its new value is invalid.
+// Note: an input field shows the value that was entered (or spun to), even if it doesn't get accepted, so we need to
+//       ask it to show the current value of its property again, which it does without losing the keyboard focus (so
+//       that, for instance, the user can keep spinning its value).
 
-const onCellEditComplete = (event: DataTableCellEditCompleteEvent): void => {
-  // Note: a property is edited using a copy of it, so we only need to ignore an invalid new value for the property to
-  //       keep its current value. A new value is invalid if it is not a finite number (e.g., the field was cleared,
-  //       giving a null value) or if it is deemed invalid by our owner.
+interface IInputScientificNumberWidget {
+  discardEdit: () => void;
+}
 
-  const { data, newValue, field, index } = event;
+const fieldRefs: (IInputScientificNumberWidget | null)[] = [];
+
+const onValueUpdated = (index: number, newValue: number | undefined): void => {
+  // Ignore an invalid new value for the property, i.e. keep its current value. A new value is invalid if it is not a
+  // finite number or if it is deemed invalid by our owner.
+
+  const property = props.properties[index];
+
+  if (!property || newValue === property.value) {
+    return;
+  }
 
   if (
     typeof newValue !== 'number' ||
     !Number.isFinite(newValue) ||
     (props.isValid && !props.isValid(index, newValue))
   ) {
+    fieldRefs[index]?.discardEdit();
+
     return;
   }
 
-  data[field] = newValue;
+  property.value = newValue;
 
   emit('propertyUpdated', index, newValue);
 };
 </script>
 
 <style scoped>
-:deep(.p-inputnumber-input) {
-  padding: 0 2px !important;
-  margin: 0 !important;
-  line-height: 1.2px !important;
+.property-editor {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.property-editor-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  padding-top: 0.375rem;
 }
 </style>

@@ -4,22 +4,19 @@
  *          do not affect the rest of the application.
  * Note #2: our CellDL Editor view hosts CellDL Editor (see CellDLEditorView.vue), which has its own toolbars and
  *          buttons, so our rules only target our view's toolbar (i.e. the one that is a direct child of our root
- *          element) and its buttons.
+ *          element). Our toolbar buttons are styled by ToolbarButtonWidget.vue.
+ * Note #3: our toolbar is stacked above the rest of the view so that the tooltip of a toolbar button can be shown on
+ *          top of the view's contents, including the layers of a graph panel (e.g., its legend), which have a z-index
+ *          of up to 4 (see GraphPanelWidget.vue).
  */
 
 .toolbar-based-view {
   > .p-toolbar {
+    position: relative;
+    z-index: 10;
+    padding: 0.125rem 0.25rem;
     border: none;
     border-radius: 0;
     border-bottom: 1px solid var(--p-content-border-color);
-  }
-
-  .toolbar-button .p-button-icon {
-    font-size: 1.5rem;
-  }
-
-  .toolbar-button:not(:disabled):hover {
-    background-color: var(--p-surface-hover) !important;
-    transform: scale(1.15);
   }
 }

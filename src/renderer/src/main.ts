@@ -10,6 +10,14 @@ import App from './App.vue';
 // import App from './AppWithSimulationData.vue';
 // import App from './AppWithExternalData.vue';
 
+import { ownDocumentTitle } from './common/common';
+
+// We are not used as a library, so the title of our document is ours to change (see ownDocumentTitle()).
+
+ownDocumentTitle();
+
+// Create and mount our application.
+
 createApp(App).mount('#app');
 
 // Prevent a file that is dropped outside of the area where we handle drag and drop (e.g., on a dialog's mask or on our

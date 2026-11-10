@@ -1,0 +1,56 @@
+/**
+ * Shared styles for our message and question dialogs (see OkMessageDialog.vue, YesNoQuestionDialog.vue, and
+ * YesNoCancelQuestionDialog.vue), as well as for the Limitations dialog of our CellDL Editor view (see
+ * CellDLEditorView.vue), i.e. a severity icon next to some text.
+ * Note: the rules are scoped under `.message-dialog` (applied to the contents of those dialogs) so that they do not
+ *       affect the rest of the application.
+ */
+
+.message-dialog {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.875rem;
+  margin: 0.25rem 0 0.5rem;
+
+  .message-dialog-icon {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    justify-content: center;
+    width: 2.25rem;
+    height: 2.25rem;
+    border-radius: 50%;
+    background-color: color-mix(in sRGB, var(--message-dialog-color) 15%, transparent);
+    color: var(--message-dialog-color);
+    font-size: 1rem;
+  }
+
+  /**
+   * Note: our text is vertically centred with our icon when it fits on one line, hence its top padding.
+   */
+
+  .message-dialog-text {
+    min-width: 0;
+    padding-top: 0.4375rem;
+    color: var(--p-text-color);
+    font-size: 0.875rem;
+    line-height: 1.375rem;
+    overflow-wrap: anywhere;
+  }
+}
+
+.message-dialog.message-dialog-info {
+  --message-dialog-color: var(--opencor-info-color);
+}
+
+.message-dialog.message-dialog-success {
+  --message-dialog-color: var(--opencor-success-color);
+}
+
+.message-dialog.message-dialog-warning {
+  --message-dialog-color: var(--opencor-warn-color);
+}
+
+.message-dialog.message-dialog-danger {
+  --message-dialog-color: var(--opencor-error-color);
+}

@@ -1,5 +1,101 @@
 [
   {
+    "version": "1.20261109.0",
+    "changes": [
+      {
+        "type": "added",
+        "description": "Some actions (Open, Open Location, and Open the Lorenz Sample) and the most recent files are now shown on the start screen."
+      },
+      {
+        "type": "added",
+        "description": "A context menu for file tabs, allowing a file, the other files, or all files to be closed, or a file's path to be copied."
+      },
+      {
+        "type": "added",
+        "description": "The status of a simulation run and the ability to copy and clear the console are now available in the Standard Simulation Experiment view."
+      },
+      { "type": "added", "description": "The ability to copy the issues listed in the Issues view." },
+      { "type": "added", "description": "The ability to copy the version details listed in the About dialog." },
+      {
+        "type": "improved",
+        "description": "Modernised the UI/UX, including the main menu, toolbars, file tabs, view switcher, context menus, hints, toasts, drop zone, loading message, splash screen, dialogs, and views."
+      },
+      {
+        "type": "improved",
+        "description": "The Unsupported File Type view now lists the views that support a file, so that one of them can be switched to."
+      },
+      {
+        "type": "improved",
+        "description": "Graph panels can now be zoomed and panned using a finger (incl. pinching), a pen or the keyboard, and their legend items are now toggle buttons."
+      },
+      { "type": "improved", "description": "The window title now shows the selected file." },
+      {
+        "type": "improved",
+        "description": "The Interactive Simulation Experiment view now has a more compact side panel and its runs can be managed more easily, while its settings dialog is now organised in sections and shows its issues in a popover."
+      },
+      {
+        "type": "improved",
+        "description": "The simulation experiment views and dialogs now use a narrow layout when OpenCOR is less than 40rem wide (e.g., on a phone or when embedded in a small container)."
+      },
+      { "type": "improved", "description": "Renamed File|Open Remote to File|Open Location." },
+      {
+        "type": "improved",
+        "description": "Better keyboard support (incl. focus rings and pressing Escape to remove the keyboard focus) and better support for assistive technologies."
+      },
+      { "type": "improved", "description": "Animations are no longer used and masks are now lighter." },
+      {
+        "type": "improved",
+        "description": "The download progress of an update now shows how much has been downloaded, with sizes in megabytes rather than in mebibytes."
+      },
+      {
+        "type": "fixed",
+        "description": "Files dropped after having been held still are no longer ignored (e.g., with Chromium on Linux)."
+      },
+      {
+        "type": "fixed",
+        "description": "Pressing Enter to confirm some text composed using an input method no longer opens a URL, imports external data, or accepts some settings."
+      },
+      {
+        "type": "fixed",
+        "description": "A simulation run no longer waits for the window to be visible again to finish."
+      },
+      { "type": "fixed", "description": "The UI can no longer be reached using the keyboard while it is blocked." }
+    ]
+  },
+  {
+    "version": "1.20261106.0",
+    "changes": [
+      {
+        "type": "improved",
+        "description": "A file opened using a data URL can now be reopened, using File|Reopen, once closed (but only during the current session)."
+      }
+    ]
+  },
+  {
+    "version": "1.20261105.1",
+    "changes": [
+      {
+        "type": "improved",
+        "description": "Switching between CellDL files no longer loses their selection, zoom, scroll position, undo history, etc."
+      }
+    ]
+  },
+  {
+    "version": "1.20261105.0",
+    "changes": [
+      {
+        "type": "added",
+        "description": "File|Save and File|Save As to save a file, either where it is or under another name."
+      },
+      { "type": "added", "description": "A file's tab now shows whether the file has been modified." },
+      {
+        "type": "added",
+        "description": "OpenCOR now asks whether to save the files that have been modified before closing them, quitting OpenCOR, installing an update, resetting everything, reloading OpenCOR's Web app, or logging off or shutting down Windows."
+      },
+      { "type": "added", "description": "A dialog that lists the current limitations of the CellDL Editor view." }
+    ]
+  },
+  {
     "version": "1.20261031.0",
     "changes": [
       {

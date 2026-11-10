@@ -27,6 +27,12 @@
 /* biome-ignore lint/correctness/noInvalidPositionAtImportRule: ignored using `--suppress` */
 @import "../components/views/simulation-experiment-view.css";
 
+/* Note: the styles that are shared by our message and question dialogs are scoped under `.message-dialog`, so they can
+         be global (within our shadow root). */
+
+/* biome-ignore lint/correctness/noInvalidPositionAtImportRule: ignored using `--suppress` */
+@import "../components/dialogs/message-dialog.css";
+
 /* Make Tailwind CSS's dark variant follow our theme rather than (necessarily) the system's theme. */
 
 @custom-variant dark (&:where(.opencor-dark-mode, .opencor-dark-mode *));
@@ -77,6 +83,59 @@
 .opencor {
   --border-color: var(--p-content-border-color);
 
+  /**
+   * The background of our masks (e.g., behind a dialog or while our UI is blocked), which is lighter than PrimeVue's
+   * (Aura theme) one.
+   */
+
+  --px-mask-background: rgb(0 0 0 / 25%);
+
+  /**
+   * The colour of our thin scrollbars, which are used where a scroll panel can't be (i.e. where the height of the
+   * scrollable area isn't fixed).
+   * Note: we can't use PrimeVue's scroll panel colour since it is only defined once a scroll panel is used.
+   */
+
+  --opencor-scrollbar-color: var(--p-surface-300);
+
+  /**
+   * The shadows of our overlays (e.g., the menus of our main menu, our context menus, our popovers, or our hints) and
+   * of our cards (e.g., our blocking message or our toasts).
+   */
+
+  --opencor-overlay-shadow: 0 8px 24px -4px rgb(0 0 0 / 12%), 0 2px 6px -2px rgb(0 0 0 / 8%);
+  --opencor-card-shadow: 0 0.25rem 1rem rgb(0 0 0 / 12%);
+
+  /**
+   * The colours of our hints (e.g., the tooltip of our toolbar buttons), which are those of PrimeVue's popovers, so
+   * that our hints look like our other overlays (e.g., our menus and popovers) in both light and dark modes.
+   */
+
+  --opencor-hint-background: var(--p-overlay-popover-background);
+  --opencor-hint-border-color: var(--p-overlay-popover-border-color);
+  --opencor-hint-color: var(--p-overlay-popover-color);
+  --opencor-hint-muted-color: var(--p-text-muted-color);
+  --opencor-hint-code-background: var(--p-content-hover-background);
+
+  /**
+   * Our severity colours, which are those of PrimeVue's Message component (Aura theme).
+   * Note: PrimeVue only defines the colours of a component (e.g., --p-message-error-color) once that component is
+   *       used, so we can't rely on them (and therefore have our own).
+   */
+
+  --opencor-success-background: color-mix(in sRGB, var(--p-green-50), transparent 5%);
+  --opencor-success-border-color: var(--p-green-200);
+  --opencor-success-color: var(--p-green-600);
+  --opencor-info-background: color-mix(in sRGB, var(--p-blue-50), transparent 5%);
+  --opencor-info-border-color: var(--p-blue-200);
+  --opencor-info-color: var(--p-blue-600);
+  --opencor-warn-background: color-mix(in sRGB, var(--p-yellow-50), transparent 5%);
+  --opencor-warn-border-color: var(--p-yellow-200);
+  --opencor-warn-color: var(--p-yellow-600);
+  --opencor-error-background: color-mix(in sRGB, var(--p-red-50), transparent 5%);
+  --opencor-error-border-color: var(--p-red-200);
+  --opencor-error-color: var(--p-red-600);
+
   *,
   ::before,
   ::after {
@@ -107,5 +166,296 @@
 
   :focus {
     outline: none !important;
+  }
+
+  /**
+   * Show a focus ring when a PrimeVue component (or a link) gets the keyboard focus.
+   * Note #1: PrimeVue's focus rings are outlines, which we remove above (so that the browser's focus outline doesn't
+   *          get shown on top of the focus rings that we draw for our own controls), so we draw them using a box
+   *          shadow instead. This is not needed for the components that draw their focus ring on an element that
+   *          doesn't itself get the focus (e.g., a checkbox or a toggle switch).
+   * Note #2: our focus ring is offset from the component (like PrimeVue's), so that it is visible on a filled
+   *          button (e.g., a primary button).
+   * Note #3: our focus ring is shown without any animation (PrimeVue would otherwise transition it in).
+   */
+
+  .p-button:focus-visible,
+  .p-slider-handle:focus-visible,
+  .p-splitter-gutter-handle:focus-visible,
+  a:focus-visible {
+    box-shadow:
+      0 0 0 2px var(--p-content-background),
+      0 0 0 4px var(--opencor-focus-ring-color, var(--p-primary-color));
+    transition: none;
+  }
+
+  /**
+   * Note: like a primary button (which focus ring has our primary colour, i.e. its background colour), a danger
+   *       button (e.g., the Reset All button of our Reset All dialog) has a focus ring of its background colour. We
+   *       fall back to our error colour, just in case PrimeVue hasn't defined the background colour of a danger
+   *       button (it only defines the colours of a component once that component is used).
+   */
+
+  .p-button-danger:focus-visible {
+    --opencor-focus-ring-color: var(--p-button-danger-background, var(--opencor-error-color));
+  }
+
+  a:focus-visible {
+    border-radius: 0.125rem;
+  }
+
+  /**
+   * Make the buttons in the footer of our dialogs small (like the rest of our dialogs' contents), but not so small
+   * that a short button (e.g., OK) becomes hard to click.
+   */
+
+  .p-dialog-footer .p-button:not(.p-button-icon-only) {
+    min-width: 4.5rem;
+    padding: var(--p-button-sm-padding-y) var(--p-button-sm-padding-x);
+    font-size: var(--p-button-sm-font-size);
+  }
+
+  /**
+   * Show and hide our masks without any animation (see also BaseDialog.vue).
+   */
+
+  .p-overlay-mask-enter-active,
+  .p-overlay-mask-leave-active {
+    animation: none;
+  }
+
+  /**
+   * Show and hide our anchored overlays (e.g., the options of a select, a popover, or a context menu) without any
+   * animation.
+   */
+
+  .p-anchored-overlay-enter-active,
+  .p-anchored-overlay-leave-active {
+    animation: none;
+    transition: none;
+  }
+
+  /**
+   * Make the options of our selects and our popovers look like the menus of our main menu.
+   */
+
+  .p-select-overlay {
+    --p-select-overlay-border-radius: 0.5rem;
+    --p-select-overlay-shadow: var(--opencor-overlay-shadow);
+    --p-select-list-padding: 0.25rem;
+    --p-select-list-gap: 0;
+    --p-select-option-padding: 0.375rem 0.5rem;
+    --p-select-list-header-padding: 0.25rem 0.25rem 0;
+
+    font-size: 0.875rem;
+
+    .p-select-filter {
+      padding: 0.25rem 2rem 0.25rem 0.5rem;
+      font-size: 0.875rem;
+    }
+
+    .p-select-list-container {
+      scrollbar-width: thin;
+      scrollbar-color: var(--opencor-scrollbar-color) transparent;
+    }
+  }
+
+  /**
+   * Our context menus (e.g., the one of our graph panels or of our file tabs), which look like the menus of our main
+   * menu (see MainMenu.vue).
+   * Note: our context menus use an item template (see ContextMenuWidget.vue), which shows an icon
+   *       (.context-menu-item-icon), a label, and, for an item that has a submenu, a chevron
+   *       (.context-menu-item-chevron).
+   */
+
+  .opencor-context-menu {
+    --p-contextmenu-list-padding: 0.25rem;
+    --p-contextmenu-list-gap: 0;
+    --p-contextmenu-item-padding: 0.375rem 0.5rem;
+    --p-contextmenu-border-radius: 0.5rem;
+    --p-contextmenu-shadow: var(--opencor-overlay-shadow);
+
+    min-width: 12rem;
+    font-size: 0.875rem;
+
+    .p-contextmenu-submenu {
+      min-width: 9rem;
+      margin-top: calc(-1 * var(--p-contextmenu-list-padding) - 1px);
+      margin-left: 0.25rem;
+    }
+
+    .p-contextmenu-separator {
+      margin: 0.125rem 0.5rem;
+    }
+
+    .context-menu-item-icon {
+      width: 1rem;
+      color: var(--p-text-muted-color);
+      font-size: 0.875rem;
+      text-align: center;
+    }
+
+    .context-menu-item-chevron {
+      margin-left: auto;
+      padding-left: 1.5rem;
+      color: var(--p-text-muted-color);
+      font-size: 0.75rem;
+    }
+
+    .p-contextmenu-item-active > .p-contextmenu-item-content,
+    .p-contextmenu-item.p-focus > .p-contextmenu-item-content {
+      .context-menu-item-icon,
+      .context-menu-item-chevron {
+        color: var(--p-text-color);
+      }
+    }
+  }
+
+  /**
+   * Note: the contents of our popovers (e.g., our issues view) have their own padding, so our popovers don't need
+   *       any.
+   */
+
+  .p-popover {
+    --p-popover-border-radius: 0.5rem;
+    --p-popover-shadow: var(--opencor-overlay-shadow);
+    --p-popover-content-padding: 0;
+  }
+}
+
+/**
+ * Our colours in dark mode (see above).
+ */
+
+.opencor-dark-mode .opencor {
+  --px-mask-background: rgb(0 0 0 / 50%);
+  --opencor-scrollbar-color: var(--p-surface-600);
+  --opencor-overlay-shadow: 0 8px 24px -4px rgb(0 0 0 / 50%), 0 2px 6px -2px rgb(0 0 0 / 40%);
+  --opencor-card-shadow: 0 0.25rem 1rem rgb(0 0 0 / 50%);
+  --opencor-success-background: color-mix(in sRGB, var(--p-green-500), transparent 84%);
+  --opencor-success-border-color: color-mix(in sRGB, var(--p-green-700), transparent 64%);
+  --opencor-success-color: var(--p-green-500);
+  --opencor-info-background: color-mix(in sRGB, var(--p-blue-500), transparent 84%);
+  --opencor-info-border-color: color-mix(in sRGB, var(--p-blue-700), transparent 64%);
+  --opencor-info-color: var(--p-blue-500);
+  --opencor-warn-background: color-mix(in sRGB, var(--p-yellow-500), transparent 84%);
+  --opencor-warn-border-color: color-mix(in sRGB, var(--p-yellow-700), transparent 64%);
+  --opencor-warn-color: var(--p-yellow-500);
+  --opencor-error-background: color-mix(in sRGB, var(--p-red-500), transparent 84%);
+  --opencor-error-border-color: color-mix(in sRGB, var(--p-red-700), transparent 64%);
+  --opencor-error-color: var(--p-red-500);
+}
+
+/**
+ * A spinner, i.e. a ring that is partly coloured using our primary colour, which size can be changed using
+ * --opencor-spinner-size.
+ */
+
+.opencor-spinner {
+  flex-shrink: 0;
+  width: var(--opencor-spinner-size, 1.125rem);
+  height: var(--opencor-spinner-size, 1.125rem);
+  border: 2px solid color-mix(in sRGB, var(--p-primary-color) 20%, transparent);
+  border-top-color: var(--p-primary-color);
+  border-radius: 50%;
+  animation: opencor-spinner-spin 0.8s linear infinite;
+}
+
+@keyframes opencor-spinner-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/**
+ * A section title (e.g., in a dialog), and a small one (e.g., in a side panel).
+ */
+
+.opencor-section-title {
+  margin: 0;
+  color: var(--p-text-muted-color);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.opencor-section-title-small {
+  font-size: 0.6875rem;
+}
+
+/**
+ * A panel, i.e. a bordered area with rounded corners.
+ */
+
+.opencor-panel {
+  border: 1px solid var(--p-content-border-color);
+  border-radius: 0.5rem;
+  background-color: var(--p-content-background);
+}
+
+/**
+ * Our hints (see common/hint.ts), which look like the tooltip of our toolbar buttons (see ToolbarButtonWidget.vue).
+ * Note: a hint may be long (e.g., the path of a file), in which case it gets wrapped (preferably after a path
+ *       separator, see displayedText() in common/hint.ts).
+ */
+
+.opencor-hint {
+  position: fixed;
+  z-index: 100000;
+  max-width: min(40rem, calc(100vw - 0.5rem));
+  padding: 0.25rem 0.5rem;
+  border: 1px solid var(--opencor-hint-border-color);
+  border-radius: 0.375rem;
+  background-color: var(--opencor-hint-background);
+  box-shadow: var(--opencor-overlay-shadow);
+  color: var(--opencor-hint-color);
+  font-size: 0.75rem;
+  font-weight: 500;
+  line-height: 1rem;
+  overflow-wrap: anywhere;
+  pointer-events: none;
+  user-select: none;
+}
+
+/**
+ * Our rich hints, which may contain some paragraphs, some code, or a table (e.g., the values of the simulation inputs
+ * of a run).
+ */
+
+.opencor-hint-rich {
+  max-width: min(22rem, calc(100vw - 0.5rem));
+  padding: 0.375rem 0.625rem;
+  font-weight: 400;
+  line-height: 1.125rem;
+
+  code {
+    padding: 0 0.1875rem;
+    border-radius: 0.25rem;
+    background-color: var(--opencor-hint-code-background);
+    font-size: 0.6875rem;
+  }
+
+  table {
+    border: none;
+    border-collapse: collapse;
+    font-size: inherit;
+  }
+
+  th,
+  td {
+    padding: 0.125rem 0;
+    border: none;
+    vertical-align: top;
+  }
+
+  th {
+    font-weight: 600;
+    text-align: start;
+  }
+
+  th + td,
+  td + td {
+    padding-left: 0.5rem;
   }
 }

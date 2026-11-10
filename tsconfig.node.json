@@ -5,7 +5,13 @@
     "outDir": "dist",
     "types": ["electron-vite/node"]
   },
-  "include": ["src/main/**/*", "src/preload/**/*", "src/renderer/**/*", "src/renderer/package.json"],
+  "include": [
+    "src/main/**/*",
+    "src/preload/**/*",
+    "src/renderer/**/*",
+    "src/renderer/changelog.json",
+    "src/renderer/package.json"
+  ],
   "exclude": [
     "src/renderer/scripts",
     "src/renderer/vite.config.ts",

@@ -1,20 +1,32 @@
 <template>
   <div ref="rootRef" class="graph-panel-widget flex flex-row h-full">
     <div v-if="showMarker" class="w-0.75 bg-primary" />
-    <div ref="mainDivRef" class="grow h-full min-w-0 relative overflow-hidden"
+    <div ref="mainDivRef" class="plot-panel grow h-full min-w-0 relative overflow-hidden"
       :style="{
         backgroundColor: themeColors.background,
         color: themeColors.text
       }"
       @contextmenu="onContextMenu"
     >
-      <div ref="plotDivRef" class="absolute inset-0" />
+      <!--
+      Note: our plot can be focused, so that it can be used with the keyboard (see onPlotKeyDown()), in which case it is
+            described to assistive technologies as an image of our plot.
+      -->
+      <div ref="plotDivRef" class="plot-area absolute inset-0"
+        tabindex="0"
+        role="img"
+        aria-roledescription="plot"
+        :aria-label="plotLabel"
+        :aria-describedby="plotDescriptionId"
+        @keydown="onPlotKeyDown"
+      />
+      <span :id="plotDescriptionId" class="sr-only">Press + or − to zoom in or out, 0 to reset the zoom, the arrow keys to pan, and Shift+F10 for more options (e.g., to export the plotted data to CSV).</span>
       <svg v-if="zoomBox && plotRect" class="absolute z-2 pointer-events-none"
         :style="{ left: `${plotRect.left}px`, top: `${plotRect.top}px` }"
         :width="plotRect.width"
         :height="plotRect.height"
       >
-        <rect class="fade-in"
+        <rect
           :x="zoomBox.x"
           :y="zoomBox.y"
           :width="zoomBox.width"
@@ -24,7 +36,7 @@
         />
       </svg>
       <template v-if="plotRect">
-        <div v-for="dragger in draggers" :key="dragger.type" class="absolute z-1"
+        <div v-for="dragger in draggers" :key="dragger.type" class="dragger absolute z-1"
           :style="{
             left: `${dragger.left}px`,
             top: `${dragger.top}px`,
@@ -32,7 +44,8 @@
             height: `${dragger.height}px`,
             cursor: `${dragger.type}-resize`
           }"
-          @mousedown="onDragStart($event, dragger.type)"
+          @pointerdown="onDragStart($event, dragger.type)"
+          @mousedown="onPressMouseDown"
           @dblclick="onDoubleClick(dragger.type)"
           @wheel="onWheel($event, dragger.type)"
         />
@@ -93,20 +106,28 @@
           fontSize: `${LEGEND_FONT_SIZE}px`
         }"
       >
-        <div v-for="legendItem in legendItems" :key="legendItem.index" class="legend-item" :class="{ 'legend-item-hidden': !legendItem.visible }"
+        <!--
+        Note: our legend items are toggle buttons, which are pressed when their trace is shown, so that they can be used
+              with the keyboard and their state is known to assistive technologies.
+        -->
+        <button v-for="legendItem in legendItems" :key="legendItem.index" class="legend-item" :class="{ 'legend-item-hidden': !legendItem.visible }"
+          type="button"
+          :aria-pressed="legendItem.visible"
           @click="onLegendClick($event, legendItem.index)"
           @dblclick="onLegendDoubleClick(legendItem.index)"
           @pointerenter="onLegendPointerEnter($event, legendItem.index)"
           @pointerleave="highlightTrace(null)"
+          @focus="onLegendFocus($event, legendItem.index)"
+          @blur="highlightTrace(null)"
         >
           <span class="legend-swatch" :style="{ backgroundColor: legendItem.visible ? legendItem.color : themeColors.hiddenTrace }">
             <span v-if="legendItem.markers" class="legend-marker" />
           </span>
           <span v-html="legendItem.name" />
-        </div>
+        </button>
       </div>
     </div>
-    <ContextMenu ref="contextMenuRef" :model="contextMenuItems" :appendTo="appendTarget" />
+    <ContextMenuWidget ref="contextMenuRef" :model="contextMenuItems" :appendTo="appendTarget" @hide="onContextMenuHide" />
     <Teleport v-if="hover" :to="appendTarget ?? 'body'">
       <div ref="hoverTooltipRef" class="hover-tooltip">
         <div class="hover-tooltip-header">
@@ -130,7 +151,6 @@
 <script setup lang="ts">
 import * as vueusecore from '@vueuse/core';
 
-import ContextMenu from 'primevue/contextmenu';
 import type { MenuItem } from 'primevue/menuitem';
 import type uPlot from 'uplot';
 import * as vue from 'vue';
@@ -143,8 +163,7 @@ import * as math from '../../common/math';
 import * as vueCommon from '../../common/vueCommon';
 
 import { useOpenCORMessage } from '../OpenCORMessage';
-
-const CONTEXT_MENU_EVENT: string = 'graph-panel-context-menu-open';
+import ContextMenuWidget from './ContextMenuWidget.vue';
 
 export interface IGraphPanelPlotTrace {
   name: string;
@@ -200,7 +219,7 @@ const LEGEND_RIGHT_MARGIN = 8; // Margin between our legend (or last X tick labe
 const DEFAULT_LEGEND_RANK = 1000; // Like Plotly's default legend rank.
 const X_TICK_LABEL_BASELINE = TICK_FONT_SIZE + 1; // Like Plotly, the distance to the baseline of our X tick labels.
 const Y_TICK_LABEL_GAP = 1; // Like Plotly, the gap between our plotting area and our Y tick labels.
-const Y_TICK_LABEL_BASELINE = 0.35 * TICK_FONT_SIZE; // Like Plotly, the distance between a tick and its label's baseline.
+const Y_TICK_LABEL_BASELINE = 0.35 * TICK_FONT_SIZE; // Like Plotly, the distance from a tick to its label's baseline.
 const TICK_LABEL_HALF_HEIGHT = 6; // Used to hide a Y tick label that would (partly) be above our container.
 const X_AXIS_SIZE_WITH_TITLE = 18; // Size of our X axis (without its title) if it has a title.
 const X_AXIS_SIZE_WITHOUT_TITLE = 20; // Size of our X axis if it doesn't have a title.
@@ -277,7 +296,6 @@ defineExpose({
   resize
 });
 
-const instanceId = Symbol('GraphPanelWidget');
 const rootRef = vue.shallowRef<HTMLElement | null>(null);
 
 // Resolve the given colour (see colors.cssColor()) against our root element, i.e. within our shadow root.
@@ -293,7 +311,7 @@ const yAxisTitleRef = vue.shallowRef<HTMLElement | null>(null);
 const rangeEditorRef = vue.shallowRef<HTMLElement | null>(null);
 const hoverTooltipRef = vue.shallowRef<HTMLElement | null>(null);
 const theme = vueCommon.useTheme();
-const contextMenuRef = vue.ref<InstanceType<typeof ContextMenu> | null>(null);
+const contextMenuRef = vue.ref<InstanceType<typeof ContextMenuWidget> | null>(null);
 const appendTarget = vueCommon.useAppendTarget(rootRef);
 const opencorMessage = useOpenCORMessage();
 let plot: uPlot | undefined;
@@ -415,6 +433,15 @@ const onLegendPointerEnter = (event: PointerEvent, index: number): void => {
   // touched since a touch only "hovers" a legend item while it is being touched, so our traces would only flash.
 
   if (event.pointerType !== 'touch') {
+    highlightTrace(index);
+  }
+};
+
+const onLegendFocus = (event: FocusEvent, index: number): void => {
+  // Highlight the trace of the given legend item, but only if it is focused using the keyboard (as if it was hovered),
+  // i.e. not if it is clicked (in which case it is already hovered, or touched, see onLegendPointerEnter()).
+
+  if (event.target instanceof Element && event.target.matches(':focus-visible')) {
     highlightTrace(index);
   }
 };
@@ -554,8 +581,8 @@ const setTraceVisibilities = (visibilities: boolean[]): void => {
 
   traceVisibilities.value = visibilities;
 
-  // Highlight the trace which legend item is hovered, if any, if it is now visible, or stop highlighting it if it is now
-  // hidden (see highlightTrace()).
+  // Highlight the trace which legend item is hovered, if any, if it is now visible, or stop highlighting it if it is
+  // now hidden (see highlightTrace()).
 
   highlightTrace(hoveredTrace);
 
@@ -567,8 +594,8 @@ const setTraceVisibilities = (visibilities: boolean[]): void => {
     return;
   }
 
-  // Determine the traces which visibility has changed in our plot, if any, and leave if there are none (so that we don't
-  // animate our axes for nothing).
+  // Determine the traces which visibility has changed in our plot, if any, and leave if there are none (so that we
+  // don't animate our axes for nothing).
 
   const seriesIndices: number[] = [];
 
@@ -706,23 +733,23 @@ const contextMenuItems = vue.computed<MenuItem[]>(() => [
     label: 'Export Plot',
     items: [
       {
-        icon: 'pi pi-file',
-        label: 'Export to JPEG',
+        icon: 'pi pi-image',
+        label: 'JPEG',
         command: () => exportToImage('jpeg')
       },
       {
-        icon: 'pi pi-file',
-        label: 'Export to PNG',
+        icon: 'pi pi-image',
+        label: 'PNG',
         command: () => exportToImage('png')
       },
       {
-        icon: 'pi pi-file',
-        label: 'Export to SVG',
+        icon: 'pi pi-image',
+        label: 'SVG',
         command: () => exportToImage('svg')
       },
       {
-        icon: 'pi pi-file',
-        label: 'Export to WebP',
+        icon: 'pi pi-image',
+        label: 'WebP',
         command: () => exportToImage('webp')
       }
     ]
@@ -737,7 +764,19 @@ const contextMenuItems = vue.computed<MenuItem[]>(() => [
   }
 ]);
 
+let contextMenuShownUsingKeyboard = false;
+
 const onContextMenu = (event: MouseEvent): void => {
+  // Leave a context menu that is requested from our range editor to the browser (e.g., to copy/paste some text), so
+  // that our range editor doesn't get closed by our context menu taking the keyboard focus away from it.
+  // Note: this also happens when our range editor gets opened using a tap, in which case it is opened under the finger,
+  //       with its text selected, so the tap is then considered as being on selected text, which gets a mobile browser
+  //       to show its text selection menu (and therefore to request a context menu).
+
+  if (event.target instanceof Node && rangeEditorRef.value?.contains(event.target)) {
+    return;
+  }
+
   // Prevent the default context menu from being shown.
 
   event.preventDefault();
@@ -745,6 +784,8 @@ const onContextMenu = (event: MouseEvent): void => {
   // Hide our hover tooltip, if any, so that it doesn't get in the way of our context menu.
 
   hover.value = null;
+
+  contextMenuShownUsingKeyboard = false;
 
   // Keep track of where our context menu was requested, so that we can zoom in/out around that position (see zoomIn()
   // and zoomOut()).
@@ -769,21 +810,59 @@ const onContextMenu = (event: MouseEvent): void => {
     }
   }
 
-  // Dispatch a custom event to notify other instances of GraphPanelWidget that our context menu is being shown.
-  // Note: this allows those other instances to hide their context menus if they are open, ensuring that only one
-  //       context menu is open at any given time.
-
-  window.dispatchEvent(
-    new CustomEvent(CONTEXT_MENU_EVENT, {
-      detail: {
-        sourceId: instanceId
-      }
-    })
-  );
-
   // Show our context menu.
 
   contextMenuRef.value?.show(event);
+};
+
+const showContextMenuUsingKeyboard = (): void => {
+  // Make sure that our plot has been laid out.
+
+  const rect = plotRect.value;
+  const mainDivRect = mainDivRef.value?.getBoundingClientRect();
+
+  if (!rect || !mainDivRect) {
+    return;
+  }
+
+  // Show our context menu at the centre of our plotting area, which is also where we zoom in/out (see zoomIn() and
+  // zoomOut()), and keep track of the fact that it was shown using the keyboard (see onContextMenuHide()).
+  // Note: our context menu gets the keyboard focus when it is shown, so that it can be used with the keyboard straight
+  //       away.
+
+  hover.value = null;
+  contextMenuCenterFractions = {};
+  contextMenuShownUsingKeyboard = true;
+
+  contextMenuRef.value?.show(
+    new MouseEvent('contextmenu', {
+      clientX: mainDivRect.left + rect.left + 0.5 * rect.width,
+      clientY: mainDivRect.top + rect.top + 0.5 * rect.height
+    })
+  );
+};
+
+const onContextMenuHide = (): void => {
+  // Give the keyboard focus back to our plot if our context menu was shown using the keyboard, unless the keyboard
+  // focus has gone somewhere else in the meantime (i.e. somewhere else than <body> or our context menu, which may keep
+  // the keyboard focus while it is being hidden).
+
+  if (!contextMenuShownUsingKeyboard) {
+    return;
+  }
+
+  contextMenuShownUsingKeyboard = false;
+
+  void vue.nextTick().then(() => {
+    const activeElement = document.activeElement;
+
+    if (
+      !isUnmounted &&
+      (!activeElement || activeElement === document.body || activeElement.closest('.opencor-context-menu'))
+    ) {
+      plotDivRef.value?.focus();
+    }
+  });
 };
 
 // Copy and export, like Plotly, i.e. an image of our plot and of our legend (but not of what we show when hovering or
@@ -833,7 +912,8 @@ const svgPath = (): ISvgPath => {
       data.push(`L${svgNumber(x)} ${svgNumber(y)}`);
     },
     arc: (x: number, y: number, radius: number) => {
-      // Note: we only ever draw full circles from their rightmost point (see markerPath()), so we draw two half circles.
+      // Note: we only ever draw full circles from their rightmost point (see markerPath()), so we draw two half
+      //       circles.
 
       const r = svgNumber(radius);
 
@@ -851,8 +931,8 @@ const svgPathElement = (path: ISvgPath, attributes: string): string => {
 };
 
 const svgHtmlText = (element: HTMLElement | null, origin: DOMRect, vertical: boolean): string => {
-  // Return the text of the given (rendered) element as SVG text elements (one per text node), positioned relative to the
-  // given origin.
+  // Return the text of the given (rendered) element as SVG text elements (one per text node), positioned relative to
+  // the given origin.
   // Note: the client rectangle of a text node is the content area of its font, i.e. its alphabetic baseline is the
   //       font's ascent below its top. However, if our text is vertical (i.e. our Y axis title, which reads from bottom
   //       to top), then its baseline is the font's ascent to the right of its left.
@@ -951,8 +1031,8 @@ const svgLegend = (origin: DOMRect, scale: number): string => {
     '<g clip-path="url(#legend)">'
   ];
 
-  // Like the browser, we snap the swatch and marker of our legend items to whole (scaled) pixels, so that they are crisp
-  // and where the browser renders them.
+  // Like the browser, we snap the swatch and marker of our legend items to whole (scaled) pixels, so that they are
+  // crisp and where the browser renders them.
 
   const snap = (value: number): number => Math.round(scale * value) / scale;
 
@@ -1240,15 +1320,12 @@ const exportToCsv = async (): Promise<void> => {
 
   try {
     // Allow the UI to update before actually starting the export to CSV.
-    // Note: we do this by waiting for two animation frames. The first wait lands just before the next paint while the
-    //       second wait lands just after the next paint.
 
-    await common.waitForNextAnimationFrame();
-    await common.waitForNextAnimationFrame();
+    await common.waitForNextPaint();
 
     // Perform the export itself.
-    // Note: to efficiently export to CSV, we build an array of CSV lines and only join them together at the end. This is
-    //       much more efficient than concatenating strings together repeatedly.
+    // Note: to efficiently export to CSV, we build an array of CSV lines and only join them together at the end. This
+    //       is much more efficient than concatenating strings together repeatedly.
 
     const csvLines: string[] = [];
 
@@ -1864,22 +1941,36 @@ const resetZoom = (axisKeys: AxisKey[] = ['x', 'y']): void => {
   animateScales(ranges, ZOOM_ANIMATION_DURATION);
 };
 
-// Mouse interaction, like with Plotly:
+// Pointer interaction (i.e. using a mouse, a pen, or a finger), like with Plotly:
 //  - our plotting area ('nsew'): drag to zoom (along both axes or, for a mostly horizontal or vertical drag, along one
-//    of them), use the mouse wheel to zoom around the mouse pointer, and double-click to reset the zoom;
+//    of them), use the mouse wheel to zoom around the mouse pointer, and double-click (or double-tap) to reset the
+//    zoom;
 //  - the middle (80%) of our axes ('ew' and 'ns'): drag to pan along that axis;
 //  - the ends (10%) of our axes ('w', 'e', 'n', and 's') and the bottom corners of our plotting area ('sw' and 'se'):
-//    drag to move the corresponding end(s) of our axes, and click one end of an axis to edit its value (see
+//    drag to move the corresponding end(s) of our axes, and click (or tap) one end of an axis to edit its value (see
 //    openRangeEditor()); and
-//  - our axes: use the mouse wheel to zoom along that axis, while double-clicking the middle of an axis (or a corner)
-//    resets the zoom along the corresponding axes.
+//  - our axes: use the mouse wheel to zoom along that axis, while double-clicking (or double-tapping) the middle of an
+//    axis (or a corner) resets the zoom along the corresponding axes.
+// Unlike with Plotly, a drag that is done using a finger can also become a pinch, i.e. a second finger can be used to
+// zoom (by moving both fingers closer to or further from each other) and pan (by moving both fingers), along both axes
+// or, if the drag started on an axis, along that axis only (see startPinch()).
 // Note #1: unlike Plotly, we don't have top corners (i.e. 'nw' and 'ne') since they would be above our plotting area,
 //          i.e. outside of our container since we don't have a top margin (and having one, just for them, would waste
 //          some valuable vertical space, especially when we have several plots stacked on top of each other). So, they
 //          wouldn't be reachable (as is the case with Plotly when it doesn't have a top margin either).
-// Note #2: a drag can be cancelled by pressing the Escape key or another mouse button (e.g., the right one), or by our
-//          window losing the focus, in which case our ranges are restored (if they were changed while dragging). A zoom
-//          can also be cancelled by dragging back to where it started (like with Plotly).
+// Note #2: a drag (or a pinch) can be cancelled by pressing the Escape key or another mouse button (e.g., the right
+//          one), by the browser taking over its pointer, or by our window losing the focus, in which case our ranges
+//          are restored (if they were changed while dragging or pinching). A zoom can also be cancelled by dragging
+//          back to where it started (like with Plotly).
+// Note #3: we handle our drags using pointer events (so that they also work with a pen or a finger), but we don't
+//          prevent the browser from emulating mouse events (i.e. "compatibility" mouse events), so that a tap still
+//          gets uPlot to move its cursor (and therefore shows our hover tooltip, see updateHover()), and a double-tap
+//          still gets turned into a double-click. However, we prevent the default behaviour of a press of the main
+//          mouse button (see onPressMouseDown()), so that it doesn't move the keyboard focus or start selecting some
+//          text, and we use it to know how many times our mouse button was clicked (see onDragMouseDown()) since a
+//          pointer event doesn't tell us.
+// Note #4: a finger (or a pen) doesn't get to scroll or zoom the page when it is used on our plotting area or our axes
+//          since they don't allow the browser to handle touch gestures (see touch-action below).
 
 type DragType = 'nsew' | 'ew' | 'w' | 'e' | 'ns' | 'n' | 's' | 'sw' | 'se';
 
@@ -1951,10 +2042,29 @@ interface IBox {
   bottom: number;
 }
 
-interface IDrag {
-  type: DragType;
+interface IPinchPointer {
   startX: number;
   startY: number;
+  x: number;
+  y: number;
+}
+
+interface IPinch {
+  pointers: Map<number, IPinchPointer>;
+  axisKeys: AxisKey[];
+  xRange: Range;
+  yRange: Range;
+}
+
+interface IDrag {
+  type: DragType;
+  pointerId: number;
+  pointerType: string;
+  clickCount: number | undefined;
+  startX: number;
+  startY: number;
+  x: number;
+  y: number;
   dx: number;
   dy: number;
   xRange: Range;
@@ -1962,6 +2072,7 @@ interface IDrag {
   zoomMode: ZoomMode;
   zoomRanges: Partial<Record<AxisKey, Range>>;
   box: IBox;
+  pinch: IPinch | undefined;
 }
 
 interface IWheelZoom {
@@ -1988,7 +2099,7 @@ const plotPosition = (
   x: number;
   y: number;
 } => {
-  // Return the position of the given mouse event relative to our plotting area.
+  // Return the position of the given mouse (or pointer) event relative to our plotting area.
 
   const mainDivRect = mainDivRef.value?.getBoundingClientRect();
 
@@ -2057,7 +2168,14 @@ const applyDrag = (currentDrag: IDrag): void => {
   zoomTo(ranges);
 };
 
-const onDragStart = (event: MouseEvent, type: DragType): void => {
+const onDragStart = (event: PointerEvent, type: DragType): void => {
+  // Only start dragging with the main button of a pointer (e.g., not with the right mouse button) and with a primary
+  // pointer (e.g., not with a second finger, which can only be used to pinch while dragging, see onDragPointerDown()).
+
+  if (event.button !== 0 || !event.isPrimary) {
+    return;
+  }
+
   // Apply our pending wheel zoom, if any, so that it doesn't get applied while dragging (in which case our drag would
   // be based on ranges that are not the ones that are shown anymore).
 
@@ -2073,33 +2191,39 @@ const onDragStart = (event: MouseEvent, type: DragType): void => {
 
   finishRangeAnimation();
 
-  // Start dragging, but only with the main mouse button and if our plot has been laid out.
+  // Start dragging, but only if our plot has been laid out.
 
   const rect = plotRect.value;
   const xRange = currentRange('x');
   const yRange = currentRange('y');
 
-  if (event.button !== 0 || !rect || !xRange || !yRange) {
+  if (!rect || !xRange || !yRange) {
     return;
   }
 
-  event.preventDefault();
-
   // Make sure that we are not already dragging.
-  // Note: this shouldn't be the case since we ignore any press of the main mouse button while dragging (see
-  //       onDragMouseDown()), but better be safe than sorry.
+  // Note: this shouldn't be the case since we ignore any press of another pointer while dragging (see
+  //       onDragPointerDown()), but better be safe than sorry.
 
   stopDrag();
 
-  // Keep track of what we are dragging, our starting position, our current ranges, a copy of our zoom ranges (so that
-  // cancelDrag() can restore them), and our zoom box.
+  // Keep track of what we are dragging, the pointer with which we are dragging, our starting (and current) position, our
+  // current ranges, a copy of our zoom ranges (so that cancelDrag() can restore them), and our zoom box.
+  // Note: we only know how many times a mouse (or a pen) has been clicked once its mouse press has been emulated (see
+  //       onDragMouseDown()), while a press using a finger is considered as a single click (since its mouse press is
+  //       only emulated once it has been released, if at all, i.e. after our drag is over).
 
   const position = plotPosition(event, rect);
 
   drag = {
     type,
+    pointerId: event.pointerId,
+    pointerType: event.pointerType,
+    clickCount: event.pointerType === 'touch' ? 1 : undefined,
     startX: position.x,
     startY: position.y,
+    x: position.x,
+    y: position.y,
     dx: 0,
     dy: 0,
     xRange,
@@ -2113,20 +2237,23 @@ const onDragStart = (event: MouseEvent, type: DragType): void => {
       right: 0,
       top: 0,
       bottom: 0
-    }
+    },
+    pinch: undefined
   };
 
-  // Listen for mouse and keyboard events on the window, as well as for it losing focus, so that we can continue to drag
-  // even if the mouse leaves our plotting area, and cancel our drag if needed.
+  // Listen for pointer, mouse, and keyboard events on the window, as well as for it losing focus, so that we can
+  // continue to drag even if our pointer leaves our plotting area, start pinching, and cancel our drag if needed.
 
+  window.addEventListener('pointerdown', onDragPointerDown, true);
+  window.addEventListener('pointermove', onDragMove);
+  window.addEventListener('pointerup', onDragEnd);
+  window.addEventListener('pointercancel', onDragPointerCancel);
   window.addEventListener('mousedown', onDragMouseDown, true);
-  window.addEventListener('mousemove', onDragMove);
-  window.addEventListener('mouseup', onDragEnd);
   window.addEventListener('keydown', onDragKeyDown, true);
   window.addEventListener('blur', cancelDrag);
 };
 
-const onDragMove = (event: MouseEvent): void => {
+const onDragMove = (event: PointerEvent): void => {
   // Make sure that we are dragging and that our plot has been laid out.
 
   const currentDrag = drag;
@@ -2136,9 +2263,26 @@ const onDragMove = (event: MouseEvent): void => {
     return;
   }
 
-  // Determine the position of our mouse relative to our plotting area.
+  // Let our pinch, if any, handle the move of one of its pointers.
+
+  if (currentDrag.pinch) {
+    movePinch(currentDrag.pinch, event, rect);
+
+    return;
+  }
+
+  // Make sure that it is the pointer with which we are dragging that has moved.
+
+  if (event.pointerId !== currentDrag.pointerId) {
+    return;
+  }
+
+  // Determine (and keep track of) the position of our pointer relative to our plotting area.
 
   const position = plotPosition(event, rect);
+
+  currentDrag.x = position.x;
+  currentDrag.y = position.y;
 
   // Use the cursor of our drag while dragging (see dragCursor), but only once our mouse has moved far enough from where
   // our drag started.
@@ -2215,8 +2359,8 @@ const onDragMove = (event: MouseEvent): void => {
 
   // Update our zoom box, which is shown on top of our plot (unless we haven't dragged far enough to zoom yet).
   // Note: like our grid and zero lines (see linesPath()), our zoom box is snapped to whole device pixels and its border
-  //       is a whole number of device pixels wide (see lineWidth()), so that it is crisp whatever our pixel ratio (e.g.,
-  //       125%). Its border is also drawn inside our zoom box, which itself is kept within our plotting area.
+  //       is a whole number of device pixels wide (see lineWidth()), so that it is crisp whatever our pixel ratio
+  //       (e.g., 125%). Its border is also drawn inside our zoom box, which itself is kept within our plotting area.
 
   if (currentDrag.zoomMode) {
     const pxRatio = dependencies._uPlot.pxRatio as number;
@@ -2238,38 +2382,56 @@ const onDragMove = (event: MouseEvent): void => {
   }
 };
 
-const onDragEnd = (event: MouseEvent): void => {
-  // Finish our drag, but only if it is the main mouse button that has been released (see onDragMouseDown()).
-
-  if (event.button !== 0) {
-    return;
-  }
-
-  // Stop dragging.
-  // Note: we must keep track of our drag (and of whether we actually dragged, see onDragMove()) before stopping it
-  //       since stopping it resets it.
+const onDragEnd = (event: PointerEvent): void => {
+  // Make sure that we are dragging.
+  // Note: this should always be the case since we only listen to pointerup events while dragging (see onDragStart()
+  //       and stopDrag()).
 
   const currentDrag = drag;
-  const dragged = !!dragCursor.value;
-
-  stopDrag();
-
-  // Make sure that we were dragging.
-  // Note: this should always be the case since we only listen to mouseup events while dragging (see onDragStart() and
-  //       stopDrag()).
 
   if (!currentDrag) {
     return;
   }
 
+  // Finish our pinch, if any, once one of its pointers has been released, making sure that our axes reflect where we
+  // stopped pinching.
+  // Note: we don't go back to dragging with the pointer that is still pressed, if any, since its drag would have to
+  //       start from wherever it is now (rather than from where our original drag started), which could be confusing.
+
+  const pinch = currentDrag.pinch;
+
+  if (pinch) {
+    if (pinch.pointers.has(event.pointerId)) {
+      applyPinch(pinch);
+      stopDrag();
+    }
+
+    return;
+  }
+
+  // Finish our drag, but only if it is the main button of the pointer with which we are dragging that has been
+  // released.
+
+  if (event.pointerId !== currentDrag.pointerId || event.button !== 0) {
+    return;
+  }
+
+  // Stop dragging.
+  // Note: we must keep track of whether we actually dragged (see onDragMove()) before stopping our drag since stopping
+  //       it resets it.
+
+  const dragged = !!dragCursor.value;
+
+  stopDrag();
+
   // If we were dragging an axis (or a corner), then make sure that our axes reflect where we stopped dragging or, like
-  // Plotly, open our range editor if we clicked one end of an axis (but not if it is the second click of a double-click,
-  // see onDoubleClick()).
+  // Plotly, open our range editor if we clicked one end of an axis (but not if it is the second click of a
+  // double-click, see onDoubleClick()).
 
   if (currentDrag.type !== 'nsew') {
     if (dragged) {
       applyDrag(currentDrag);
-    } else if (isAxisEnd(currentDrag.type) && event.detail <= 1) {
+    } else if (isAxisEnd(currentDrag.type) && (currentDrag.clickCount ?? 1) <= 1) {
       openRangeEditor(currentDrag.type);
     }
 
@@ -2327,20 +2489,66 @@ const onDragKeyDown = (event: KeyboardEvent): void => {
   }
 };
 
+const onDragPointerDown = (event: PointerEvent): void => {
+  // Make sure that it is another pointer than the one with which we are dragging that has been pressed.
+  // Note: this should always be the case since we start listening to pointer presses once our pointer has been pressed
+  //       (see onDragStart()), and a pointer can only be pressed again once it has been released (in which case our
+  //       drag is over), but better be safe than sorry.
+
+  const currentDrag = drag;
+
+  if (!currentDrag || event.pointerId === currentDrag.pointerId) {
+    return;
+  }
+
+  // Ignore the press of another pointer (so that it can't start another drag, e.g., of one of our axes while zooming
+  // into our plotting area, or trigger anything else), unless we are dragging using a finger and it is a second finger,
+  // in which case our drag becomes a pinch (see startPinch()).
+  // Note: we listen to pointer presses in the capture phase (see onDragStart()), so we get them before anything else.
+  //       We also prevent their default behaviour, so that their mouse presses don't get emulated (see Note #3 above).
+
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (event.pointerType === 'touch' && currentDrag.pointerType === 'touch' && !currentDrag.pinch) {
+    startPinch(currentDrag, event);
+  }
+};
+
+const onDragPointerCancel = (event: PointerEvent): void => {
+  // Cancel our drag (or pinch) if the browser has taken over (one of) its pointer(s) (see Note #2 above).
+
+  const currentDrag = drag;
+
+  if (currentDrag && (event.pointerId === currentDrag.pointerId || currentDrag.pinch?.pointers.has(event.pointerId))) {
+    cancelDrag();
+  }
+};
+
 const onDragMouseDown = (event: MouseEvent): void => {
-  // Ignore any other press of the main mouse button while dragging (e.g., using another pointing device), so that it
-  // can't start another drag (e.g., of one of our axes while zooming into our plotting area). Otherwise, cancel our
-  // drag if the user presses another mouse button (e.g., the right one), in which case we also prevent the context menu
-  // that would normally be shown as a result of that mouse button being pressed (see preventContextMenu()).
+  // Keep track of how many times our mouse button has been clicked when its press (with which our drag started) gets
+  // emulated (see Note #3 above), and prevent it from moving the keyboard focus or selecting some text (see
+  // onPressMouseDown()). Ignore any other press of the main mouse button while dragging (e.g., using another pointing
+  // device), so that it can't start another drag (e.g., of one of our axes while zooming into our plotting area).
+  // Otherwise, cancel our drag if the user presses another mouse button (e.g., the right one), in which case we also
+  // prevent the context menu that would normally be shown as a result of that mouse button being pressed (see
+  // preventContextMenu()).
   // Note #1: we listen to mouse presses in the capture phase (see onDragStart()), so we get them before anything else.
   // Note #2: a context menu is shown either when the right mouse button is pressed (e.g., on macOS) or released (e.g.,
   //          on Windows), so we prevent the next context menu from being shown, whenever that is. We also stop
   //          preventing it when another mouse button gets pressed (e.g., if the context menu event didn't get fired for
   //          some reason).
+  // Note #3: pressing another mouse button while our main mouse button is pressed doesn't result in a pointer press
+  //          (but in a pointer move), so we rely on its mouse press to cancel our drag.
 
   if (event.button === 0) {
     event.preventDefault();
-    event.stopPropagation();
+
+    if (drag && drag.clickCount === undefined) {
+      drag.clickCount = event.detail;
+    } else {
+      event.stopPropagation();
+    }
 
     return;
   }
@@ -2358,6 +2566,139 @@ const onDragMouseDown = (event: MouseEvent): void => {
     },
     { capture: true, once: true }
   );
+};
+
+const onPressMouseDown = (event: MouseEvent): void => {
+  // Prevent a press of the main mouse button on our plotting area or one of our axes (be it a real one or one that is
+  // emulated, e.g., after a tap, see Note #3 above) from moving the keyboard focus (e.g., away from an input field that
+  // is being edited) or from selecting some text.
+
+  if (event.button === 0) {
+    event.preventDefault();
+  }
+};
+
+// Pinching, i.e. zooming (and panning) using two fingers, around the point between them (see the beginning of the
+// pointer interaction section above).
+// Note: we scale our ranges by how much closer to (or further from) each other our fingers have moved, and we pan them,
+//       so that what was originally between our fingers remains between them.
+
+const startPinch = (currentDrag: IDrag, event: PointerEvent): void => {
+  // Make sure that our plot has been laid out.
+
+  const rect = plotRect.value;
+  const xRange = currentRange('x');
+  const yRange = currentRange('y');
+
+  if (!rect || !xRange || !yRange) {
+    return;
+  }
+
+  // Stop dragging and start pinching using the finger with which we were dragging (from where it currently is) and the
+  // second finger, using our current ranges (which we may have changed while dragging, e.g., an axis).
+
+  if (dragRafId !== undefined) {
+    cancelAnimationFrame(dragRafId);
+
+    dragRafId = undefined;
+  }
+
+  const position = plotPosition(event, rect);
+
+  currentDrag.zoomMode = '';
+  currentDrag.pinch = {
+    pointers: new Map([
+      [currentDrag.pointerId, { startX: currentDrag.x, startY: currentDrag.y, x: currentDrag.x, y: currentDrag.y }],
+      [event.pointerId, { startX: position.x, startY: position.y, x: position.x, y: position.y }]
+    ]),
+    axisKeys: draggedAxes(currentDrag.type),
+    xRange,
+    yRange
+  };
+
+  zoomBox.value = null;
+  dragCursor.value = null;
+};
+
+const movePinch = (pinch: IPinch, event: PointerEvent, rect: IPlotRect): void => {
+  // Make sure that it is one of our fingers that has moved.
+
+  const pointer = pinch.pointers.get(event.pointerId);
+
+  if (!pointer) {
+    return;
+  }
+
+  // Keep track of where our finger is and pinch accordingly, coalescing our pinches into one per frame.
+
+  const position = plotPosition(event, rect);
+
+  pointer.x = position.x;
+  pointer.y = position.y;
+
+  if (dragRafId === undefined) {
+    dragRafId = requestAnimationFrame(() => {
+      dragRafId = undefined;
+
+      if (drag?.pinch) {
+        applyPinch(drag.pinch);
+      }
+    });
+  }
+};
+
+const pinchedRange = (range: Range, startFraction: number, fraction: number, factor: number): Range => {
+  // Return the given range, scaled by the given factor, so that the value that was at the given start fraction of the
+  // given range is now at the given fraction of the new range.
+
+  const value = range[0] + (range[1] - range[0]) * startFraction;
+  const length = (range[1] - range[0]) * factor;
+  const min = value - length * fraction;
+
+  return [min, min + length];
+};
+
+const applyPinch = (pinch: IPinch): void => {
+  // Make sure that our plot has been laid out and that we have two fingers that are far enough from each other for us
+  // to know how much closer to (or further from) each other they have moved.
+
+  const rect = plotRect.value;
+  const [pointer1, pointer2] = Array.from(pinch.pointers.values());
+
+  if (!rect || !pointer1 || !pointer2) {
+    return;
+  }
+
+  const startDistance = Math.hypot(pointer2.startX - pointer1.startX, pointer2.startY - pointer1.startY);
+  const distance = Math.hypot(pointer2.x - pointer1.x, pointer2.y - pointer1.y);
+
+  if (startDistance < MIN_DRAG || distance < MIN_DRAG) {
+    return;
+  }
+
+  // Determine the new ranges of our axes and zoom into them.
+
+  const factor = startDistance / distance;
+  const startX = 0.5 * (pointer1.startX + pointer2.startX);
+  const startY = 0.5 * (pointer1.startY + pointer2.startY);
+  const x = 0.5 * (pointer1.x + pointer2.x);
+  const y = 0.5 * (pointer1.y + pointer2.y);
+  const ranges: Partial<Record<AxisKey, Range>> = {};
+
+  if (pinch.axisKeys.includes('x')) {
+    ranges.x = pinchedRange(pinch.xRange, startX / rect.width, x / rect.width, factor);
+  }
+
+  if (pinch.axisKeys.includes('y')) {
+    ranges.y = pinchedRange(
+      pinch.yRange,
+      (rect.height - startY) / rect.height,
+      (rect.height - y) / rect.height,
+      factor
+    );
+  }
+
+  zoomTo(ranges);
 };
 
 const onDoubleClick = (type: DragType): void => {
@@ -2451,10 +2792,13 @@ const openRangeEditor = (type: AxisEnd): void => {
             : undefined
   };
 
-  // Select the text of our range editor once it has been rendered, and close it (applying its value) if the mouse is
+  // Select the text of our range editor once it has been rendered, and close it (applying its value) if a pointer is
   // pressed anywhere else.
-  // Note: we listen to mouse presses (in the capture phase) rather than rely on our range editor losing focus since
-  //       some of our mouse presses don't move the focus (e.g., see onDragStart()).
+  // Note #1: we listen to pointer presses (in the capture phase) rather than rely on our range editor losing focus
+  //          since some of our pointer presses don't move the focus (see onPressMouseDown()).
+  // Note #2: we listen to pointer presses rather than mouse presses since our range editor may have been opened using
+  //          a tap, in which case a mouse press gets emulated once our range editor has been opened (see Note #3 of
+  //          the pointer interaction section above), which would otherwise close it straight away.
 
   void vue.nextTick().then(() => {
     const element = rangeEditorRef.value;
@@ -2466,7 +2810,7 @@ const openRangeEditor = (type: AxisEnd): void => {
     }
   });
 
-  window.addEventListener('mousedown', onRangeEditorMouseDown, true);
+  window.addEventListener('pointerdown', onRangeEditorPointerDown, true);
 };
 
 const closeRangeEditor = (apply: boolean): void => {
@@ -2493,7 +2837,7 @@ const closeRangeEditor = (apply: boolean): void => {
 
   rangeEditor.value = null;
 
-  window.removeEventListener('mousedown', onRangeEditorMouseDown, true);
+  window.removeEventListener('pointerdown', onRangeEditorPointerDown, true);
 
   const range = currentRange(editor.axisKey);
 
@@ -2522,10 +2866,10 @@ const onRangeEditorKeyDown = (event: KeyboardEvent): void => {
   }
 };
 
-const onRangeEditorMouseDown = (event: MouseEvent): void => {
-  // Close our range editor (applying its value) if the mouse is pressed outside of it.
-  // Note: we listen to the window in the capturing phase, so event.target is our shadow host rather than the element
-  //       that was actually pressed (see src/common/shadowCompat.ts), hence we check the event's composed path instead.
+const onRangeEditorPointerDown = (event: PointerEvent): void => {
+  // Close our range editor (applying its value) if a pointer is pressed outside of it.
+  // Note: we check the event's composed path rather than its target since we listen to the window in the capturing
+  //       phase, i.e. from outside of our shadow root (see src/common/shadowCompat.ts).
 
   const rangeEditor = rangeEditorRef.value;
 
@@ -2605,10 +2949,12 @@ const onWheel = (event: WheelEvent, type: DragType): void => {
 };
 
 const stopDrag = (): void => {
-  // Stop dragging, if we are.
+  // Stop dragging (or pinching), if we are.
 
-  window.removeEventListener('mousemove', onDragMove);
-  window.removeEventListener('mouseup', onDragEnd);
+  window.removeEventListener('pointerdown', onDragPointerDown, true);
+  window.removeEventListener('pointermove', onDragMove);
+  window.removeEventListener('pointerup', onDragEnd);
+  window.removeEventListener('pointercancel', onDragPointerCancel);
   window.removeEventListener('mousedown', onDragMouseDown, true);
   window.removeEventListener('keydown', onDragKeyDown, true);
   window.removeEventListener('blur', cancelDrag);
@@ -2626,14 +2972,15 @@ const stopDrag = (): void => {
 };
 
 const cancelDrag = (): void => {
-  // Cancel our drag, if any, restoring our ranges if we were dragging an axis (or a corner) since our ranges get
-  // updated while dragging an axis (or a corner) unlike while dragging our plotting area.
+  // Cancel our drag (or pinch), if any, restoring our ranges if we were dragging an axis (or a corner) or pinching
+  // since our ranges get updated while dragging an axis (or a corner) or pinching, unlike while dragging our plotting
+  // area.
 
   const currentDrag = drag;
 
   stopDrag();
 
-  if (currentDrag && currentDrag.type !== 'nsew') {
+  if (currentDrag && (currentDrag.type !== 'nsew' || currentDrag.pinch)) {
     zoomRanges = { ...currentDrag.zoomRanges };
 
     setScales({ x: zoomRanges.x ?? null, y: zoomRanges.y ?? null });
@@ -2647,6 +2994,122 @@ const preventContextMenu = (event: MouseEvent): void => {
   event.stopPropagation();
 
   window.removeEventListener('contextmenu', preventContextMenu, true);
+};
+
+// Keyboard interaction, i.e. once our plot has the keyboard focus (see our template):
+//  - + (or =) and − (or _): zoom in and out, around the middle of our plotting area;
+//  - 0: reset the zoom;
+//  - the arrow keys: pan along the corresponding axis; and
+//  - Shift+F10 (or the context menu key): show our context menu (see showContextMenuUsingKeyboard()).
+// Note: we leave a key alone if it is used with Ctrl, Cmd, or Alt (e.g., Ctrl+− to zoom out the whole page), and we
+//       ignore our keys while dragging (in which case only our drag should have an effect, see onDragKeyDown()).
+
+const KEYBOARD_PAN_FRACTION = 0.1; // Fraction of the length of an axis by which it gets panned using an arrow key.
+
+const plotDescriptionId = `graph-panel-description-${vue.useId()}`;
+
+const plainText = (html: string | undefined): string => {
+  // Return the text of the given HTML (e.g., "<i>I<sub>K,r</sub></i>" becomes "IK,r").
+  // Note: we parse our HTML in a separate document, so that nothing in it gets loaded or run (e.g., an image).
+
+  return html ? (new DOMParser().parseFromString(html, 'text/html').body.textContent ?? '').trim() : '';
+};
+
+const plotLabel = vue.computed<string>(() => {
+  // Our plot, as described to assistive technologies, i.e. based on the titles of our axes, if any.
+
+  const xAxisTitle = plainText(props.data.xAxisTitle);
+  const yAxisTitle = plainText(props.data.yAxisTitle);
+
+  if (xAxisTitle && yAxisTitle) {
+    return `Plot of ${yAxisTitle} against ${xAxisTitle}`;
+  }
+
+  if (yAxisTitle) {
+    return `Plot of ${yAxisTitle}`;
+  }
+
+  return xAxisTitle ? `Plot against ${xAxisTitle}` : 'Plot';
+});
+
+const panBy = (axisKey: AxisKey, direction: 1 | -1): void => {
+  // Pan the given axis in the given direction by a fraction of its length, from the range that it will have once we
+  // are done animating it (so that panning several times in a row, e.g., by keeping an arrow key pressed, is not
+  // affected by our animation, see zoomBy()).
+
+  const range = targetRange(axisKey);
+
+  if (!range) {
+    return;
+  }
+
+  const delta = direction * KEYBOARD_PAN_FRACTION * (range[1] - range[0]);
+
+  zoomTo({ [axisKey]: [range[0] + delta, range[1] + delta] }, WHEEL_ZOOM_ANIMATION_DURATION);
+};
+
+const onPlotKeyDown = (event: KeyboardEvent): void => {
+  // Make sure that we are not dragging and that our plot has been laid out.
+
+  if (drag || !plotRect.value) {
+    return;
+  }
+
+  // Show our context menu.
+
+  if (
+    (event.key === 'F10' && event.shiftKey && !event.ctrlKey && !event.metaKey && !event.altKey) ||
+    event.key === 'ContextMenu'
+  ) {
+    event.preventDefault();
+
+    showContextMenuUsingKeyboard();
+
+    return;
+  }
+
+  // Zoom, reset the zoom, or pan.
+
+  if (event.ctrlKey || event.metaKey || event.altKey) {
+    return;
+  }
+
+  switch (event.key) {
+    case '+':
+    case '=':
+      zoomBy(ZOOM_FACTOR, ['x', 'y'], {}, ZOOM_ANIMATION_DURATION);
+
+      break;
+    case '-':
+    case '_':
+      zoomBy(1 / ZOOM_FACTOR, ['x', 'y'], {}, ZOOM_ANIMATION_DURATION);
+
+      break;
+    case '0':
+      resetZoom();
+
+      break;
+    case 'ArrowLeft':
+      panBy('x', -1);
+
+      break;
+    case 'ArrowRight':
+      panBy('x', 1);
+
+      break;
+    case 'ArrowDown':
+      panBy('y', -1);
+
+      break;
+    case 'ArrowUp':
+      panBy('y', 1);
+
+      break;
+    default:
+      return;
+  }
+
+  event.preventDefault();
 };
 
 // Number formatting like in Plotly (with its default 'B' exponent format, i.e. SI prefixes except for 10^9 which is B).
@@ -2833,13 +3296,13 @@ const axisSplits = (axisKey: AxisKey): uPlot.Axis.Splits => {
     let ticks = ticksBetween(min, max, dtick);
     let format = numberFormat(dtick, maxEnd);
 
-    // Make sure that our tick labels don't overlap by increasing our tick spacing (to the next "nice" value) for as long
-    // as they would.
+    // Make sure that our tick labels don't overlap by increasing our tick spacing (to the next "nice" value) for as
+    // long as they would.
     // Note: this always ends since we end up with at most one tick once our tick spacing is bigger than our range.
 
     const tickLabelSize = (): number => {
-      // Return the size of our biggest tick label along our axis, i.e. its width for our X axis and its height for our Y
-      // axis.
+      // Return the size of our biggest tick label along our axis, i.e. its width for our X axis and its height for our
+      // Y axis.
 
       if (axisKey === 'y') {
         return TICK_FONT_SIZE;
@@ -3960,8 +4423,8 @@ const createPlot = (width: number, height: number): void => {
         show: false
       },
       cursor: {
-        // Note: we only use uPlot's cursor to keep track of the mouse pointer (see updateHover()), and we handle mouse
-        //       presses and double-clicks ourselves (see onDragStart() and onDoubleClick()).
+        // Note: we only use uPlot's cursor to keep track of the mouse pointer (see updateHover()), and we handle
+        //       pointer presses and double-clicks ourselves (see onDragStart() and onDoubleClick()).
 
         x: false,
         y: false,
@@ -4079,10 +4542,12 @@ const createPlot = (width: number, height: number): void => {
     plotDivRef.value as HTMLElement
   ) as uPlot;
 
-  // Handle mouse interaction with our plotting area.
-  // Note: uPlot's plotting area (i.e. its "over" element) gets destroyed with our plot, and its event listeners with it.
+  // Handle pointer interaction with our plotting area.
+  // Note: uPlot's plotting area (i.e. its "over" element) gets destroyed with our plot, and its event listeners with
+  //       it.
 
-  plot.over.addEventListener('mousedown', (event: MouseEvent) => onDragStart(event, 'nsew'));
+  plot.over.addEventListener('pointerdown', (event: PointerEvent) => onDragStart(event, 'nsew'));
+  plot.over.addEventListener('mousedown', onPressMouseDown);
   plot.over.addEventListener('dblclick', () => onDoubleClick('nsew'));
   plot.over.addEventListener('wheel', (event: WheelEvent) => onWheel(event, 'nsew'), {
     passive: false
@@ -4141,8 +4606,8 @@ const updatePlot = (): void => {
     createPlot(width, height);
   } else {
     // We already have a plot and its signature hasn't changed, so update the visibility of its series (since our traces
-    // may be different ones, e.g., when runs get tracked in interactive mode), its data, and its size (or layout, if the
-    // width of our legend has changed since it is part of our right margin), if needed.
+    // may be different ones, e.g., when runs get tracked in interactive mode), its data, and its size (or layout, if
+    // the width of our legend has changed since it is part of our right margin), if needed.
 
     const currentPlot = plot;
 
@@ -4164,28 +4629,9 @@ const updatePlot = (): void => {
   }
 };
 
-// Context menu handling.
-
-const handleContextMenu = (event: Event): void => {
-  // Hide our context menu if the event was dispatched by another instance of GraphPanelWidget.
-  // Note: this ensures that only one context menu is open at any given time.
-
-  const detail = (event as CustomEvent<{ sourceId?: symbol }>)?.detail;
-
-  if (!detail || detail.sourceId === instanceId) {
-    return;
-  }
-
-  contextMenuRef.value?.hide?.();
-};
-
 // Vue lifecycle hooks.
 
 vue.onMounted(() => {
-  // Listen for the custom event that is dispatched when another instance of GraphPanelWidget shows its context menu.
-
-  window.addEventListener(CONTEXT_MENU_EVENT, handleContextMenu);
-
   // Start tracking the size of our container so that we can update our plot when it changes.
   // Note #1: we pass a getter (i.e. mainDivRef.value) rather than our ref (i.e. mainDivRef) since VueUse uses its own
   //          version of Vue's types, which are not compatible with ours.
@@ -4259,11 +4705,6 @@ vue.onBeforeUnmount(() => {
 });
 
 vue.onUnmounted(() => {
-  // Stop listening for the custom event that is dispatched when another instance of GraphPanelWidget shows its context
-  // menu.
-
-  window.removeEventListener(CONTEXT_MENU_EVENT, handleContextMenu);
-
   stopTrackingContainerSize?.();
   stopTrackingLegendSize?.();
 });
@@ -4365,20 +4806,6 @@ vue.watch(
     vertical-align: super;
   }
 
-  .fade-in {
-    animation: fade-in 200ms;
-  }
-
-  @keyframes fade-in {
-    from {
-      opacity: 0;
-    }
-
-    to {
-      opacity: 1;
-    }
-  }
-
   /**
    * Note: our hover tooltip is shown above our panels (so that it doesn't get clipped by short panels), but below
    *       PrimeVue's overlays (e.g., our context menu), which z-index is at least 1000.
@@ -4390,9 +4817,9 @@ vue.watch(
     max-width: 320px;
     padding: 6px 10px;
     border: 1px solid var(--p-overlay-popover-border-color);
-    border-radius: var(--p-overlay-popover-border-radius);
+    border-radius: 0.5rem;
     background-color: var(--p-overlay-popover-background);
-    box-shadow: var(--p-overlay-popover-shadow);
+    box-shadow: var(--opencor-overlay-shadow);
     color: var(--p-overlay-popover-color);
     font-size: 12px;
     line-height: 18px;
@@ -4452,13 +4879,26 @@ vue.watch(
     user-select: none;
   }
 
+  /**
+   * Note: our legend items are buttons (see our template), which we style like the rest of our legend (and which take
+   *       the whole width of our legend, so that their hover background is as wide as our legend). Their focus ring is
+   *       drawn inside them since our legend would otherwise clip it (since it can scroll).
+   */
+
   .legend-item {
     position: relative;
+    display: block;
+    width: calc(100% - 8px);
     min-height: 20px;
     margin: 0 4px;
     padding: 0 6px 0 30px;
+    border: none;
     border-radius: var(--p-border-radius-sm);
+    background-color: transparent;
+    color: inherit;
+    font: inherit;
     line-height: 20px;
+    text-align: start;
     white-space: nowrap;
     cursor: pointer;
     transition: background-color 0.15s;
@@ -4466,6 +4906,10 @@ vue.watch(
 
   .legend-item:hover {
     background-color: var(--p-content-hover-background);
+  }
+
+  .legend-item:focus-visible {
+    box-shadow: inset 0 0 0 2px var(--opencor-focus-ring-color, var(--p-primary-color));
   }
 
   .legend-item-hidden {
@@ -4511,5 +4955,29 @@ vue.watch(
 
   :deep(.u-over) {
     cursor: crosshair;
+  }
+
+  /**
+   * Note: a finger (or a pen) used on our plotting area or one of our axes is for us to handle (see Note #4 of the
+   *       pointer interaction section), i.e. not for the browser to scroll or zoom the page.
+   */
+
+  :deep(.u-over),
+  .dragger {
+    touch-action: none;
+  }
+
+  /**
+   * Focus ring of our plot, which is drawn on top of everything (e.g., our legend) and inside our panel (since our
+   * panel would otherwise clip it).
+   */
+
+  .plot-panel:has(> .plot-area:focus-visible)::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    z-index: 5;
+    box-shadow: inset 0 0 0 2px var(--opencor-focus-ring-color, var(--p-primary-color));
+    pointer-events: none;
   }
 </style>

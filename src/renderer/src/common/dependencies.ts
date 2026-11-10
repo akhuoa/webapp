@@ -26,9 +26,9 @@ export const setUPlot = (module: Module): void => {
 };
 
 // Initialise xxHash.
-// Note: this compiles xxHash's WASM, so we only do it when asked to (i.e. by our renderer, see initialisation.ts) rather
-//       than when this module is imported. Indeed, this module is also (indirectly) imported by our main process, which
-//       doesn't need xxHash.
+// Note: this compiles xxHash's WASM, so we only do it when asked to (i.e. by our renderer, see initialisation.ts)
+//       rather than when this module is imported. Indeed, this module is also (indirectly) imported by our main
+//       process, which doesn't need xxHash.
 
 let xxhashInitialisation: Promise<Module> | null = null;
 

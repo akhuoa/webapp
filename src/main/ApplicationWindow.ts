@@ -17,9 +17,13 @@ export class ApplicationWindow extends electron.BrowserWindow {
 
   constructor(options: electron.BrowserWindowConstructorOptions, usePreload = true) {
     // Add some common options and call our parent constructor.
-    // Note: we use backgroundColor to minimise the flickering that may occur when first showing a window.
+    // Note #1: we use backgroundColor to minimise the flickering that may occur when first showing a window.
+    // Note #2: a transparent window (e.g., our splash screen window) draws its own background, so it must keep a
+    //          transparent background.
 
-    options.backgroundColor = backgroundColor();
+    const transparent = !!options.transparent;
+
+    options.backgroundColor = transparent ? '#00000000' : backgroundColor();
     options.show = false;
     options.useContentSize = true;
 
@@ -43,19 +47,21 @@ export class ApplicationWindow extends electron.BrowserWindow {
     //       when our window gets resized), so it must match our theme, which may change while we are running (e.g., if
     //       the user changes our theme or the system one), or there would be some flickering.
 
-    const updateBackgroundColor = (): void => {
-      const color = backgroundColor();
+    if (!transparent) {
+      const updateBackgroundColor = (): void => {
+        const color = backgroundColor();
 
-      if (color && !this.isDestroyed()) {
-        this.setBackgroundColor(color);
-      }
-    };
+        if (color && !this.isDestroyed()) {
+          this.setBackgroundColor(color);
+        }
+      };
 
-    electron.nativeTheme.on('updated', updateBackgroundColor);
+      electron.nativeTheme.on('updated', updateBackgroundColor);
 
-    this.once('closed', () => {
-      electron.nativeTheme.removeListener('updated', updateBackgroundColor);
-    });
+      this.once('closed', () => {
+        electron.nativeTheme.removeListener('updated', updateBackgroundColor);
+      });
+    }
   }
 
   // Send a message to our renderer.

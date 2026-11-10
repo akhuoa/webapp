@@ -4,7 +4,12 @@
     "composite": true,
     "outDir": "dist"
   },
-  "include": ["src/renderer/**/*.ts", "src/renderer/**/*.vue", "src/renderer/package.json"],
+  "include": [
+    "src/renderer/**/*.ts",
+    "src/renderer/**/*.vue",
+    "src/renderer/changelog.json",
+    "src/renderer/package.json"
+  ],
   "exclude": [
     "src/renderer/scripts",
     "src/renderer/vite.config.ts",

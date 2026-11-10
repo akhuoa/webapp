@@ -99,19 +99,22 @@ const startCheck = (): void => {
 };
 
 // Force reload the Web app.
-// Note: there is no standard way to force reload a page (location.reload(true) is non-standard and ignored by modern
-//       browsers). So, we first fetch the page with cache: 'reload', which bypasses the HTTP cache and updates it, and
-//       then we reload the page. (Our assets have a hash in their file names (see vite.config.ts), so the new version
-//       of the page references new assets, which cannot be stale.) We do this within a given amount of time after
-//       which we reload the page anyway, so that the user is never left waiting forever.
+// Note #1: there is no standard way to force reload a page (location.reload(true) is non-standard and ignored by modern
+//          browsers). So, we first fetch the page with cache: 'reload', which bypasses the HTTP cache and updates it,
+//          and then we reload the page. (Our assets have a hash in their file names (see vite.config.ts), so the new
+//          version of the page references new assets, which cannot be stale.) We do this within a given amount of time
+//          after which we reload the page anyway, so that the user is never left waiting forever.
+// Note #2: refreshing the page may take a while, during which things may change (e.g., a file may get edited), so the
+//          caller may provide a function that determines, right before we reload the page, whether we can reload it.
+//          We return whether we are reloading the page.
 
 const FORCE_RELOAD_TIMEOUT = 30 * 1000; // 30 seconds.
 
 let forceReloading = false;
 
-const forceReload = async (): Promise<void> => {
+const forceReload = async (canReload?: () => Promise<boolean>): Promise<boolean> => {
   if (forceReloading) {
-    return;
+    return true;
   }
 
   forceReloading = true;
@@ -136,7 +139,15 @@ const forceReload = async (): Promise<void> => {
     window.clearTimeout(timeoutId);
   }
 
+  if (canReload && !(await canReload())) {
+    forceReloading = false;
+
+    return false;
+  }
+
   window.location.reload();
+
+  return true;
 };
 
 // Export the version checking functions and state.

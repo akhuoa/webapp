@@ -6,8 +6,29 @@ import type { OpenCORTheme } from '../../index';
 
 import * as locSedApi from '../libopencor/locSedApi';
 
-import { MEDIUM_DELAY, VERY_SHORT_DELAY } from './constants';
+import { COPY_FEEDBACK_LIFE, MEDIUM_DELAY, NARROW_LAYOUT_WIDTH, VERY_SHORT_DELAY } from './constants';
 import { electronApi } from './electronApi';
+
+// A composable to know whether the given element is narrow (i.e. narrower than NARROW_LAYOUT_WIDTH), in which case it
+// should use a narrow layout (e.g., a simulation experiment view stacks its side panel above its plots rather than
+// shows it to their left, so that its plots remain usable on a phone or when OpenCOR is embedded in a small container).
+// Note #1: we use the width of the given element (rather than that of the window), since OpenCOR may not take the whole
+//          window (e.g., when it is embedded in a page).
+// Note #2: we ignore a width of zero, which means that the given element is not shown (e.g., if it is in a view that
+//          is not currently shown), so that our layout doesn't change for nothing.
+
+export const useNarrowLayout = (elementRef: vue.Ref<HTMLElement | null>): vue.Ref<boolean> => {
+  const narrowLayout = vue.ref<boolean>(false);
+  const { width } = vueusecore.useElementSize(() => elementRef.value, undefined, { box: 'border-box' });
+
+  vue.watch(width, (newWidth: number) => {
+    if (newWidth > 0) {
+      narrowLayout.value = newWidth < NARROW_LAYOUT_WIDTH;
+    }
+  });
+
+  return narrowLayout;
+};
 
 // A constant to know the UID of the active instance of OpenCOR.
 
@@ -257,6 +278,93 @@ export const useAppendTarget = (ancestorRef: vue.Ref<HTMLElement | null>) => {
   return appendTarget;
 };
 
+// The props of a toolbar button (see ToolbarButtonWidget.vue).
+// Note #1: they are defined here so that they can also be used by code that computes some of them (see
+//          useCopyToClipboard()).
+// Note #2: a shortcut is both shown in the tooltip of a toolbar button and used as the value of its aria-keyshortcuts
+//          attribute, so it must be valid for the latter (e.g., "F9" or "Control+Shift+O", see
+//          https://www.w3.org/TR/wai-aria-1.2/#aria-keyshortcuts). This is not the case for a shortcut as it is shown
+//          elsewhere (e.g., "⌘O" or "Ctrl+O" in our main menu), in which case a separate prop would be needed for
+//          aria-keyshortcuts (or our shortcut would need to be converted).
+
+export interface IToolbarButtonProps {
+  icon: string;
+  label?: string;
+  shortcut?: string;
+  accent?: 'primary' | 'warning' | 'danger';
+  disabled?: boolean;
+  small?: boolean;
+  tooltipAlign?: 'start' | 'end';
+  feedback?: boolean;
+  keepFocus?: boolean;
+}
+
+// A composable to copy some text to the clipboard and to let people know, for a short while, whether it was copied,
+// through the icon, label, and accent of the (toolbar) button that was used to copy it (see ToolbarButtonWidget.vue).
+// Note: copying is asynchronous, so we may get reset (e.g., if our dialog gets closed) or unmounted in the meantime, in
+//       which case we don't let people know whether the text was copied (since it would be out of context).
+
+export const useCopyToClipboard = () => {
+  const status = vue.ref<'idle' | 'copied' | 'failed'>('idle');
+  let statusTimer: number | undefined;
+  let copyNumber = 0;
+  let unmounted = false;
+
+  const copy = async (text: string): Promise<void> => {
+    const crtCopyNumber = ++copyNumber;
+    let copied = true;
+
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch {
+      copied = false;
+    }
+
+    if (unmounted || crtCopyNumber !== copyNumber) {
+      return;
+    }
+
+    status.value = copied ? 'copied' : 'failed';
+
+    window.clearTimeout(statusTimer);
+
+    statusTimer = window.setTimeout(() => {
+      status.value = 'idle';
+    }, COPY_FEEDBACK_LIFE);
+  };
+
+  const reset = (): void => {
+    ++copyNumber;
+
+    window.clearTimeout(statusTimer);
+
+    status.value = 'idle';
+  };
+
+  // Note: our feedback (i.e. "Copied" or "Could not copy") is shown in the tooltip of our button, which must therefore
+  //       be shown even though our button has just been pressed (see ToolbarButtonWidget.vue).
+
+  const buttonProps = (label: string): Pick<IToolbarButtonProps, 'icon' | 'label' | 'accent' | 'feedback'> => {
+    if (status.value === 'copied') {
+      return { icon: 'pi pi-check', label: 'Copied', accent: 'primary', feedback: true };
+    }
+
+    if (status.value === 'failed') {
+      return { icon: 'pi pi-times', label: 'Could not copy', accent: 'danger', feedback: true };
+    }
+
+    return { icon: 'pi pi-copy', label };
+  };
+
+  vue.onBeforeUnmount(() => {
+    unmounted = true;
+
+    window.clearTimeout(statusTimer);
+  });
+
+  return { copy, reset, buttonProps };
+};
+
 // Populate the parameters of the given instance task.
 // Note: we collect our parameters into a plain array (rather than push them one by one into our reactive array, which
 //       would go through Vue's reactivity for each of them), sort them using a collator (which is faster than
@@ -395,7 +503,7 @@ export const waitWhileRunning = (
           setTimeout(poll, VERY_SHORT_DELAY);
 
           break;
-        default: // locSedApi.ESedInstanceStatus.IDLE:
+        default: // locSedApi.ESedInstanceStatus.IDLE.
           if (onProgress && !runAbortedRef?.value) {
             callSafely(() => onProgress(100));
 

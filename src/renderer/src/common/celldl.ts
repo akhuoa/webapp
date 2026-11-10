@@ -11,8 +11,8 @@ import * as dependencies from './dependencies';
 // Note #2: this relies on the BG-RDF framework, which CellDL Editor only makes available once it has been initialised
 //          (otherwise, bgRdfStatements() returns no statement), hence it must only be called once CellDL Editor has
 //          been loaded.
-// Note #3: CellDL Editor comes with its own copy of Oxigraph (bundled from @celldl/rdf), but it doesn't expose it, hence
-//          we need our own copy (which @physiomelinks/bg2cellml expects as a peer dependency).
+// Note #3: CellDL Editor comes with its own copy of Oxigraph (bundled from @celldl/rdf), but it doesn't expose it,
+//          hence we need our own copy (which @physiomelinks/bg2cellml expects as a peer dependency).
 
 let converterInitialisation: Promise<bg2cellml.Converter> | null = null;
 let converterInitialised = false;

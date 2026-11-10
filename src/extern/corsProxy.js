@@ -1,6 +1,6 @@
 // A simple CORS proxy handler for Cloudflare Workers (see https://workers.cloudflare.com/).
-// Note: the proxy accepts any target URL, but it only returns content that is a CellML file, a SED-ML file, an OMEX file,
-//       or a CSV file (see isCsvFile()), and that is not too large (see MAX_SIZE). Such content is returned as an
+// Note: the proxy accepts any target URL, but it only returns content that is a CellML file, a SED-ML file, an OMEX
+//       file, or a CSV file (see isCsvFile()), and that is not too large (see MAX_SIZE). Such content is returned as an
 //       opaque, sandboxed download, so that a browser never renders or executes it.
 
 const CORS_HEADERS = {
@@ -97,9 +97,9 @@ const readBytes = async (reader, maxSize) => {
 const readRest = async (reader, head) => {
   // Read the rest of some content, the start of which we have already read, and return all of it, unless it is too
   // large, in which case return null.
-  // Note: we read (up to) one more byte than allowed, so that we know whether the content is too large, in which case we
-  //       reject it without concatenating its chunks. Otherwise, we concatenate the start of the content and the rest of
-  //       it in one go.
+  // Note: we read (up to) one more byte than allowed, so that we know whether the content is too large, in which case
+  //       we reject it without concatenating its chunks. Otherwise, we concatenate the start of the content and the
+  //       rest of it in one go.
 
   const all = await readChunks(reader, MAX_SIZE + 1, [head]);
 

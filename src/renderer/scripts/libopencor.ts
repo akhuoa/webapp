@@ -3,9 +3,9 @@
 import * as bun from 'bun';
 
 // Filter out noisy linker warnings emitted when linking the prebuilt static version of libOpenCOR on a macOS ARM system
-// with a newer LLVM+Clang. Indeed, libOpenCOR was compiled with an older LLVM+Clang that uses stale target feature names
-// (`+zcm` and `+zcz`), which the current linker no longer recognises. These warnings are harmless (indeed, the linker
-// ignores them), but they are numerous enough to clutter our output.
+// with a newer LLVM+Clang. Indeed, libOpenCOR was compiled with an older LLVM+Clang that uses stale target feature
+// names (`+zcm` and `+zcz`), which the current linker no longer recognises. These warnings are harmless (indeed, the
+// linker ignores them), but they are numerous enough to clutter our output.
 
 const LINE_FILTER_PATTERN = /is not a recognized feature for this target/i;
 

@@ -1,5 +1,3 @@
-import * as vue from 'vue';
-
 // Our OpenCOR component lives in a shadow root (see element.ts), so that a host application's styles don't affect it
 // (and vice versa). However, from the host document's point of view:
 //  - an event that originates from within our shadow root has our shadow host as its target; and
@@ -12,7 +10,7 @@ import * as vue from 'vue';
 // shadow root. This is only done for our own shadow hosts.
 // Note: we use global symbols (rather than module variables), so that different copies of our OpenCOR component (e.g.,
 //       different versions of it used by different parts of a host application) share the same registry and don't
-//       patch document.activeElement more than once.
+//       patch document.activeElement or listen to events more than once.
 
 const OPENCOR_SHADOW_HOSTS = Symbol.for('opencor.shadowHosts');
 const OPENCOR_ACTIVE_ELEMENT_PATCHED = Symbol.for('opencor.activeElementPatched');
@@ -57,8 +55,8 @@ const patchActiveElement = (): void => {
   opencorDocument[OPENCOR_ACTIVE_ELEMENT_PATCHED] = true;
 };
 
-// The events for which we want the host document (and anything after it, i.e. the window) to see the element from which
-// they originated within our shadow root as their target.
+// The events for which we want listeners outside of our shadow root (e.g., on the host document or the window) to see
+// the element from which they originated within our shadow root as their target.
 
 const EVENTS = [
   'auxclick',
@@ -77,25 +75,83 @@ const EVENTS = [
   'touchstart'
 ];
 
+const OPENCOR_EVENT_TARGETS_KEPT = Symbol.for('opencor.eventTargetsKept');
+
+const nativeTarget = Object.getOwnPropertyDescriptor(Event.prototype, 'target')?.get;
+
+// Determine whether the given node is within the given shadow root, possibly within a shadow root of its own (e.g.,
+// CellDL Editor's SVG panel).
+
+const isWithin = (node: Node, shadowRoot: ShadowRoot): boolean => {
+  let root = node.getRootNode();
+
+  while (root instanceof ShadowRoot) {
+    if (root === shadowRoot) {
+      return true;
+    }
+
+    root = root.host.getRootNode();
+  }
+
+  return false;
+};
+
 const keepEventTarget = (event: Event): void => {
-  // Note: we are the last listener within our shadow root (since we listen to our shadow root itself in the bubbling
-  //       phase), so event.target is still the element from which the event originated. Once the event leaves our
-  //       shadow root, the browser will retarget it to our shadow host, unless we keep its current target.
+  // Note #1: we listen to the window in the capturing phase, i.e. before any listener on the host document (incl. its
+  //          capturing listeners, e.g., PrimeVue's ContextMenu uses one to determine whether a click occurred outside of
+  //          it), so we can determine the target of an event as seen from within our shadow root (i.e. the first node in
+  //          the event's composed path that belongs to our shadow root) and keep it for listeners outside of our shadow
+  //          root.
+  // Note #2: listeners within our shadow root (incl. within a shadow root of its own) still get the target that the
+  //          browser would give them.
 
-  const target = event.target;
+  if (!nativeTarget || Object.hasOwn(event, 'target')) {
+    return;
+  }
 
-  if (target && !Object.hasOwn(event, 'target')) {
-    Object.defineProperty(event, 'target', {
-      configurable: true,
-      get: () => target
-    });
+  const path = event.composedPath();
+
+  for (let i = 1; i < path.length; ++i) {
+    const host = path[i];
+    const shadowRoot = path[i - 1];
+
+    if (host instanceof Element && shadowHosts.has(host) && shadowRoot instanceof ShadowRoot) {
+      const target = path.slice(0, i - 1).find((node) => node instanceof Node && node.getRootNode() === shadowRoot);
+
+      if (target) {
+        Object.defineProperty(event, 'target', {
+          configurable: true,
+          get() {
+            const currentTarget = (this as Event).currentTarget;
+
+            return currentTarget instanceof Node &&
+              (currentTarget === shadowRoot || isWithin(currentTarget, shadowRoot))
+              ? nativeTarget.call(this)
+              : target;
+          }
+        });
+      }
+
+      return;
+    }
   }
 };
 
+const keepEventTargets = (): void => {
+  const opencorWindow = window as unknown as Record<symbol, boolean | undefined>;
+
+  if (opencorWindow[OPENCOR_EVENT_TARGETS_KEPT]) {
+    return;
+  }
+
+  for (const event of EVENTS) {
+    window.addEventListener(event, keepEventTarget, { capture: true, passive: true });
+  }
+
+  opencorWindow[OPENCOR_EVENT_TARGETS_KEPT] = true;
+};
+
 // A composable to restore the behaviour that code relying on the host document expects for the given shadow host.
-// Note: listeners registered on the window or the host document in the capturing phase are called before an event
-//       reaches our shadow root, so they still see our shadow host as the target. Our own such listeners must
-//       therefore use event.composedPath() to determine the actual target of an event (e.g., see GraphPanelWidget.vue).
 
 export const useShadowCompat = (host: HTMLElement | null, shadowRoot: ShadowRoot | null): void => {
   if (!host || !shadowRoot) {
@@ -105,14 +161,5 @@ export const useShadowCompat = (host: HTMLElement | null, shadowRoot: ShadowRoot
   shadowHosts.add(host);
 
   patchActiveElement();
-
-  for (const event of EVENTS) {
-    shadowRoot.addEventListener(event, keepEventTarget);
-  }
-
-  vue.onUnmounted(() => {
-    for (const event of EVENTS) {
-      shadowRoot.removeEventListener(event, keepEventTarget);
-    }
-  });
+  keepEventTargets();
 };

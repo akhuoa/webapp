@@ -14,13 +14,21 @@ export interface ISettings {
   general: ISettingsGeneral;
 }
 
+export interface ISystemDetails {
+  cpuModel: string;
+  logicalCoreCount: number;
+  totalMemory: number;
+  electronVersion: string;
+  chromiumVersion: string;
+}
+
 // Some methods to determine the operating system, whether the application is running on a mobile device, etc.
 // Note: the order of the checks in osName() is important. For instance, we need to check for "iPhone" before checking
 //       for "Mac" since the user agent of iPhones contains both "iPhone" and "Mac".
 
 let _osName: string | null = null;
 
-const osName = (): string => {
+export const osName = (): string => {
   if (_osName) {
     return _osName;
   }
@@ -72,6 +80,29 @@ export const isCtrlOrCmd = (event: KeyboardEvent): boolean => {
   return isMacOs() ? event.metaKey : event.ctrlKey;
 };
 
+// A method to determine whether a keydown event is processed by an input method editor (IME), e.g., for Chinese or
+// Japanese, in which case it is not for us to handle (e.g., Enter to confirm some text being composed).
+// Note: Safari ends a composition before dispatching the keydown event that confirms it, so that event isn't flagged as
+//       composing, but its key code is 229 (as for any keydown event that is processed by an IME).
+
+export const isImeKeyDown = (event: KeyboardEvent): boolean => {
+  return event.isComposing || event.keyCode === 229;
+};
+
+// Some methods to let OpenCOR own the title of its document (e.g., to show the name of the selected file in it, see
+// ContentsComponent.vue), which is only the case when OpenCOR is not used as a library (see main.ts) since the title
+// of a page that embeds OpenCOR is not ours to change.
+
+let _documentTitleOwned = false;
+
+export const ownDocumentTitle = (): void => {
+  _documentTitleOwned = true;
+};
+
+export const isDocumentTitleOwned = (): boolean => {
+  return _documentTitleOwned;
+};
+
 // A method to enable/disable the main menu.
 
 export const enableDisableMainMenu = (enable: boolean): void => {
@@ -80,8 +111,8 @@ export const enableDisableMainMenu = (enable: boolean): void => {
 
 // Some prefixes for the (made-up) name of a file opened using a data URL, and a method to determine whether a file name
 // is such a name.
-// Note #1: a file opened using a data URL only exists in memory, so it cannot be reopened (e.g., the next time OpenCOR
-//          is started) and must therefore not be added to our recent files either.
+// Note #1: a file opened using a data URL only exists in memory, so it can only be reopened during the current session
+//          (see OpenCOR.addRecentFile()), i.e. not, say, the next time OpenCOR is started.
 // Note #2: a COMBINE archive is named "OMEX #<n>" while a CellML file (from a ZIP-CellML data URL) is named
 //          "CellML #<n>/<file name>" where <file name> is the name of the CellML file, so that it is still shown under
 //          its own name (see common.fileName()).
@@ -266,6 +297,17 @@ export const isDivisible = (a: number, b: number): boolean => {
   return Math.abs(quotient - roundedQuotient) <= Number.EPSILON * Math.max(1, Math.abs(roundedQuotient));
 };
 
+// A method to determine whether the Web browser has a save file picker, i.e. whether it supports the File System Access
+// API (only Chromium-based Web browsers do). If it doesn't, then a file can only be saved by downloading it.
+
+export interface IWindowWithSaveFilePicker {
+  showSaveFilePicker?: (options?: { suggestedName?: string }) => Promise<FileSystemFileHandle>;
+}
+
+export const hasSaveFilePicker = (): boolean => {
+  return typeof window !== 'undefined' && !!(window as unknown as IWindowWithSaveFilePicker).showSaveFilePicker;
+};
+
 // A method to trigger a browser download for a file.
 
 const DOWNLOAD_OBJECT_URL_LIFETIME = 60000; // 60 seconds.
@@ -300,6 +342,13 @@ export const baseFileName = (fileName: string): string => {
   return fileName.replace(/\.[^/.]+$/, '');
 };
 
+// A method to escape some text, so that it can be used in some HTML (e.g., in the question of a question dialog, which
+// gets rendered as HTML).
+
+export const escapeHtml = (text: string): string => {
+  return text.replace(/[&<>"']/g, (character: string) => `&#${character.charCodeAt(0)};`);
+};
+
 // A method to get the file name from a file path.
 // Note: the file path should be a canonical path (see locApi.File.canonicalPath()), i.e. a path that libOpenCOR has
 //       already decoded, if needed (e.g., "https://example.com/my%20model.cellml" becomes
@@ -323,6 +372,49 @@ export const waitForNextAnimationFrame = (): Promise<number> => {
   return new Promise((resolve: FrameRequestCallback) => {
     requestAnimationFrame(resolve);
   });
+};
+
+// A method to wait for our UI to be painted.
+// Note #1: we wait for two animation frames since the first one is just before the next paint while the second one is
+//          after it (i.e. just before the following paint).
+// Note #2: there is no need to wait for vue.nextTick() first since Vue updates the DOM in a microtask, i.e. before the
+//          next animation frame.
+// Note #3: no animation frames are run while our document is hidden (e.g., when our window is minimised), in which case
+//          there is nothing to paint for people to see, so we don't wait (or stop waiting) for our UI to be painted.
+//          Otherwise, we would wait until our document is visible again (e.g., a simulation run would only finish
+//          once our window is restored).
+
+const waitForNextAnimationFrameUnlessHidden = (): Promise<void> => {
+  return new Promise((resolve) => {
+    if (document.visibilityState === 'hidden') {
+      resolve();
+
+      return;
+    }
+
+    const onDone = (): void => {
+      cancelAnimationFrame(frame);
+
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+
+      resolve();
+    };
+
+    const onVisibilityChange = (): void => {
+      if (document.visibilityState === 'hidden') {
+        onDone();
+      }
+    };
+
+    const frame = requestAnimationFrame(onDone);
+
+    document.addEventListener('visibilitychange', onVisibilityChange);
+  });
+};
+
+export const waitForNextPaint = async (): Promise<void> => {
+  await waitForNextAnimationFrameUnlessHidden();
+  await waitForNextAnimationFrameUnlessHidden();
 };
 
 // Some constants related to simulation data values.

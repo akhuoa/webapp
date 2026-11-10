@@ -21,23 +21,37 @@ import {
  */
 import { startRendererServer, stopRendererServer } from '../renderer/src/common/rendererServer';
 
-import { enableDisableFileCloseAndCloseAllMenuItems, enableDisableMainMenu } from './MainMenu';
 import {
+  enableDisableFileCloseAndCloseAllMenuItems,
+  enableDisableFileSaveAndSaveAsMenuItems,
+  enableDisableMainMenu
+} from './MainMenu';
+import {
+  allowSavingFile,
   applyTheme,
+  canSaveFile,
   checkForUpdates,
+  closeConfirmed,
+  closeRequestReceived,
+  disallowSavingFile,
   downloadAndInstallUpdate,
   fileClosed,
   fileIssue,
   fileOpened,
   fileSelected,
+  filesModified,
   filesOpened,
   installUpdateAndRestart,
+  isTrustedFilePath,
   loadSettings,
   MainWindow,
   normaliseCommandLine,
   recentFilePathCanonicalised,
+  reopenRecentFile,
   reportFatalErrorAndQuit,
   resetAll,
+  saveFile,
+  saveFileAs,
   saveSettings
 } from './MainWindow';
 import { SplashScreenWindow } from './SplashScreenWindow';
@@ -455,11 +469,23 @@ electron.app
 
         // Handle some requests from our renderer process.
 
+        electron.ipcMain.handle('allow-saving-dropped-file', (_event, filePath: string) => {
+          allowSavingFile(filePath);
+        });
         electron.ipcMain.handle('apply-theme', (_event, theme: OpenCORTheme) => {
           applyTheme(theme);
         });
+        electron.ipcMain.handle('can-save-file', (_event, filePath: string): boolean => {
+          return canSaveFile(filePath);
+        });
         electron.ipcMain.handle('check-for-updates', (_event, atStartup: boolean) => {
           checkForUpdates(atStartup);
+        });
+        electron.ipcMain.handle('close-confirmed', () => {
+          closeConfirmed();
+        });
+        electron.ipcMain.handle('close-request-received', () => {
+          closeRequestReceived();
         });
         /* TODO: enable once our GitHub integration is fully ready.
         electron.ipcMain.handle('clear-github-cache', async (): Promise<void> => {
@@ -469,6 +495,9 @@ electron.app
           return deleteGitHubAccessToken();
         });
 */
+        electron.ipcMain.handle('disallow-saving-file', (_event, filePath: string) => {
+          disallowSavingFile(filePath);
+        });
         electron.ipcMain.handle('download-and-install-update', () => {
           downloadAndInstallUpdate();
         });
@@ -478,11 +507,23 @@ electron.app
         electron.ipcMain.handle('enable-disable-file-close-and-close-all-menu-items', (_event, enable: boolean) => {
           enableDisableFileCloseAndCloseAllMenuItems(enable);
         });
+        electron.ipcMain.handle(
+          'enable-disable-file-save-and-save-as-menu-items',
+          (_event, enableSave: boolean, enableSaveAs: boolean) => {
+            enableDisableFileSaveAndSaveAsMenuItems(enableSave, enableSaveAs);
+          }
+        );
         electron.ipcMain.handle('file-closed', (_event, filePath: string) => {
-          fileClosed(filePath);
+          if (isTrustedFilePath(filePath)) {
+            fileClosed(filePath);
+          }
+
+          disallowSavingFile(filePath);
         });
         electron.ipcMain.handle('file-issue', (_event, filePath: string, canonicalFilePath: string) => {
           fileIssue(filePath, canonicalFilePath);
+          disallowSavingFile(filePath);
+          disallowSavingFile(canonicalFilePath);
         });
         electron.ipcMain.handle('file-opened', (_event, filePath: string, canonicalFilePath: string) => {
           fileOpened(filePath, canonicalFilePath);
@@ -490,11 +531,14 @@ electron.app
         electron.ipcMain.handle('file-selected', (_event, filePath: string) => {
           fileSelected(filePath);
         });
-        electron.ipcMain.handle('files-opened', (_event, filePaths: string[]) => {
-          filesOpened(filePaths);
+        electron.ipcMain.handle('files-modified', (_event, filePaths: string[]) => {
+          filesModified(filePaths);
         });
-        electron.ipcMain.handle('install-update-and-restart', () => {
-          installUpdateAndRestart();
+        electron.ipcMain.handle('files-opened', (_event, filePaths: string[]) => {
+          filesOpened(filePaths.filter(isTrustedFilePath));
+        });
+        electron.ipcMain.handle('install-update-and-restart', (): boolean => {
+          return installUpdateAndRestart();
         });
         /* TODO: enable once our GitHub integration is fully ready.
         electron.ipcMain.handle('load-github-access-token', async (): Promise<string | null> => {
@@ -510,10 +554,19 @@ electron.app
             recentFilePathCanonicalised(filePath, canonicalFilePath);
           }
         );
+        electron.ipcMain.handle('reopen-recent-file', (_event, filePath: string) => {
+          reopenRecentFile(filePath);
+        });
         electron.ipcMain.handle('renderer-ready', () => {
           MainWindow.instance?.rendererReady();
         });
         electron.ipcMain.handle('reset-all', resetAll);
+        electron.ipcMain.handle('save-file', (_event, filePath: string, contents: Uint8Array): Promise<void> => {
+          return saveFile(filePath, contents);
+        });
+        electron.ipcMain.handle('save-file-as', (_event, defaultFilePath: string): Promise<string | null> => {
+          return saveFileAs(defaultFilePath);
+        });
         /* TODO: enable once our GitHub integration is fully ready.
         electron.ipcMain.handle('save-github-access-token', async (_event, token: string): Promise<boolean> => {
           return saveGitHubAccessToken(token);
@@ -521,6 +574,9 @@ electron.app
 */
         electron.ipcMain.handle('save-settings', (_event, settings: ISettings) => {
           saveSettings(settings);
+        });
+        electron.ipcMain.handle('show-open-dialog', () => {
+          MainWindow.instance?.showOpenDialog();
         });
 
         // Create our main window and pass to it our command line arguments.

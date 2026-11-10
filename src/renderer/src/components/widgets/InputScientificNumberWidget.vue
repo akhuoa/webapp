@@ -2,6 +2,7 @@
   <FloatLabel variant="on" :class="rootAttrs.class" :style="rootAttrs.style">
     <span :class="rootClass">
       <InputText ref="inputElement" :model-value="internalValue" class="p-inputnumber-input w-full"
+        :aria-label="label"
         v-bind="inputAttrs"
         v-keyfilter="{ pattern: /^[+-]?(\d*(\.\d*)?|\.\d*)([eE][+-]?\d*)?$/ }"
         @update:model-value="onUpdateModelValue"
@@ -16,7 +17,7 @@
         type="button"
         :disabled="disabled || readonly || atDefaultValue"
         :tabindex="-1"
-        :title="`Reset to ${defaultValue}`"
+        v-hint="`Reset to ${defaultValue}`"
         @mousedown.prevent
         @click="onResetButtonClick"
       >
@@ -27,7 +28,7 @@
           type="button"
           :disabled="disabled || readonly || maxBoundary"
           :tabindex="-1"
-          title="Increment (hold Shift for a larger step)"
+          v-hint="'Increment (hold Shift for a larger step)'"
           @mousedown="onSpinButtonMouseDown($event, 1)"
           @mouseleave="clearSpinTimerAndRemoveEventListeners"
           @mouseup="clearSpinTimerAndRemoveEventListeners"
@@ -43,7 +44,7 @@
           type="button"
           :disabled="disabled || readonly || minBoundary"
           :tabindex="-1"
-          title="Decrement (hold Shift for a larger step)"
+          v-hint="'Decrement (hold Shift for a larger step)'"
           @mousedown="onSpinButtonMouseDown($event, -1)"
           @mouseleave="clearSpinTimerAndRemoveEventListeners"
           @mouseup="clearSpinTimerAndRemoveEventListeners"
@@ -65,10 +66,14 @@
 import * as vue from 'vue';
 
 import * as constants from '../../common/constants';
+import { vHint } from '../../common/hint';
 
 defineOptions({
   inheritAttrs: false
 });
+
+// Note: our label is not associated with our input field (i.e. it has no `for` attribute), so it is also used as the
+//       accessible name of our input field (unless our owner gives it one).
 
 const props = defineProps<{
   modelValue: number | undefined;
@@ -579,9 +584,9 @@ vue.onBeforeUnmount(() => {
 }
 
 /**
- * Note: we use some of the class names of PrimeVue's InputNumber component, whose (global) styles get injected as soon
- *       as it is used somewhere (e.g., in our property editors), so we make sure that the properties that it sets and
- *       that matter to us are set here too.
+ * Note: we use some of the class names of PrimeVue's InputNumber component, whose (global) styles only get injected if
+ *       it is used somewhere (e.g., by a host application, if we are used as a library), so we make sure that the
+ *       properties that it sets and that matter to us are set here too.
  */
 
 .p-inputnumber-button {

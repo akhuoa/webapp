@@ -1,54 +1,44 @@
 <template>
-  <div class="issues-container flex flex-col border rounded-lg">
+  <div class="issues opencor-panel">
     <!-- Header -->
 
-    <div class="issues-header flex items-center justify-between px-3.5 py-2.5 border-b">
-      <div class="header-title flex items-center gap-2 text-sm font-semibold">
-        <i class="pi pi-exclamation-circle"></i>
+    <div class="issues-header">
+      <div class="issues-title">
+        <i class="pi pi-exclamation-circle issues-title-icon" />
         <span>Issues</span>
-        <span v-if="issues.length" class="issue-count inline-flex items-center justify-center min-w-5 h-5 px-1.5 py-0 text-xs font-semibold rounded-full text-white" :class="severityClass">{{ issues.length }}</span>
       </div>
-      <div v-if="issues.length" class="flex items-center gap-3">
-        <span v-if="errorCount" class="summary-item error">
-          <i class="pi pi-times-circle"></i>{{ errorCount }}
+      <div v-if="issues.length" class="issues-summary">
+        <span v-for="summaryItem in summaryItems" :key="summaryItem.type" class="issues-summary-item" :class="summaryItem.class">
+          <i :class="summaryItem.icon" aria-hidden="true" /><span class="sr-only">{{ summaryItem.label }}: </span>{{ summaryItem.count }}
         </span>
-        <span v-if="warningCount" class="summary-item warning">
-          <i class="pi pi-exclamation-triangle"></i>{{ warningCount }}
-        </span>
-        <span v-if="informationCount" class="summary-item information">
-          <i class="pi pi-info-circle"></i>{{ informationCount }}
-        </span>
+        <ToolbarButtonWidget
+          v-bind="copyToClipboard.buttonProps('Copy issues')"
+          small
+          tooltipAlign="end"
+          @click="copyIssues"
+        />
       </div>
     </div>
 
     <!-- Content -->
 
-    <div class="min-h-0">
+    <div class="issues-content">
       <!-- Empty state -->
 
-      <div v-if="!issues.length" class="empty-state flex flex-col items-center justify-center h-full gap-1 text-sm">
-        <i class="pi pi-check-circle text-2xl!"></i>
-        <span>No issues found!</span>
+      <div v-if="!issues.length" class="issues-empty">
+        <i class="pi pi-check-circle" />
+        <span>No issues found.</span>
       </div>
 
       <!-- Issues -->
 
       <ScrollPanel v-else class="h-full">
-        <div class="flex flex-col gap-2 p-3">
-          <div
-            v-for="(issue, index) in issues"
-            :key="`issue_${index}`"
-            class="issue-item flex items-start gap-2 px-3 py-2 border-l-3 rounded-md"
-            :class="issueSeverityClass(issue.type)"
-          >
-            <div class="flex shrink-0 items-center justify-center w-5 h-5 mt-0.5">
-              <i :class="issueIcon(issue.type)"></i>
-            </div>
-            <div class="issue-content flex-1 min-w-0">
-              <span v-html="issue.description" class="issue-description text-[0.8125rem] select-text"></span>
-            </div>
+        <div class="issues-list" :class="{ 'issues-list-extra-space': extraSpace }">
+          <div v-for="(issue, index) in issues" :key="`issue_${index}`" class="issue" :class="ISSUE_TYPES[issue.type].class">
+            <i :class="ISSUE_TYPES[issue.type].icon" class="issue-icon" aria-hidden="true" />
+            <span class="sr-only">{{ ISSUE_TYPES[issue.type].label }}: </span>
+            <span class="issue-description" v-html="issue.description" />
           </div>
-          <div v-if="extraSpace" class="h-2"></div>
         </div>
       </ScrollPanel>
     </div>
@@ -58,6 +48,7 @@
 <script setup lang="ts">
 import * as vue from 'vue';
 
+import * as vueCommon from '../../common/vueCommon';
 import * as locApi from '../../libopencor/locApi';
 
 const props = withDefaults(
@@ -70,137 +61,255 @@ const props = withDefaults(
   }
 );
 
-const errorCount = vue.computed<number>(() => {
-  return props.issues.filter((i) => i.type === locApi.EIssueType.ERROR).length;
-});
-const warningCount = vue.computed<number>(() => {
-  return props.issues.filter((i) => i.type === locApi.EIssueType.WARNING).length;
-});
-const informationCount = vue.computed<number>(() => {
-  return props.issues.filter((i) => i.type === locApi.EIssueType.INFORMATION).length;
-});
+// Our issue types, in order of severity.
 
-const severityClass = vue.computed<string>(() => {
-  if (errorCount.value > 0) {
-    return 'error';
-  }
-
-  if (warningCount.value > 0) {
-    return 'warning';
-  }
-
-  return 'information';
-});
-
-const issueSeverityClass = (type: locApi.EIssueType): string => {
-  switch (type) {
-    case locApi.EIssueType.ERROR:
-      return 'severity-error';
-    case locApi.EIssueType.WARNING:
-      return 'severity-warning';
-    default: // locApi.EIssueType.INFORMATION.
-      return 'severity-information';
-  }
+const ISSUE_TYPES: Record<locApi.EIssueType, { label: string; icon: string; class: string }> = {
+  [locApi.EIssueType.ERROR]: { label: 'Error', icon: 'pi pi-times-circle', class: 'issue-error' },
+  [locApi.EIssueType.WARNING]: { label: 'Warning', icon: 'pi pi-exclamation-triangle', class: 'issue-warning' },
+  [locApi.EIssueType.INFORMATION]: { label: 'Information', icon: 'pi pi-info-circle', class: 'issue-information' }
 };
 
-const issueIcon = (type: locApi.EIssueType): string => {
-  switch (type) {
-    case locApi.EIssueType.ERROR:
-      return 'pi pi-times-circle';
-    case locApi.EIssueType.WARNING:
-      return 'pi pi-exclamation-triangle';
-    default: // locApi.EIssueType.INFORMATION.
-      return 'pi pi-info-circle';
-  }
+// The number of issues of each type, if any.
+// Note: the icon of a type is not visible to assistive technologies, so we use a visually hidden label instead (so
+//       that, for instance, "Errors: 2" rather than just "2" gets announced).
+
+const SUMMARY_LABELS: Record<locApi.EIssueType, string> = {
+  [locApi.EIssueType.ERROR]: 'Errors',
+  [locApi.EIssueType.WARNING]: 'Warnings',
+  [locApi.EIssueType.INFORMATION]: 'Information'
 };
+
+const summaryItems = vue.computed<
+  { type: locApi.EIssueType; icon: string; class: string; label: string; count: number }[]
+>(() => {
+  return [locApi.EIssueType.ERROR, locApi.EIssueType.WARNING, locApi.EIssueType.INFORMATION]
+    .map((type) => {
+      return {
+        type,
+        icon: ISSUE_TYPES[type].icon,
+        class: ISSUE_TYPES[type].class,
+        label: SUMMARY_LABELS[type],
+        count: props.issues.filter((issue) => issue.type === type).length
+      };
+    })
+    .filter((summaryItem) => summaryItem.count);
+});
+
+// Copy our issues, as plain text, to the clipboard, so that they can easily be included in an issue report, for
+// instance.
+// Note #1: the description of an issue may contain some HTML (e.g., to emphasise part of it), hence we only keep its
+//          text.
+// Note #2: our issues may change while our copy button lets people know whether they were copied (e.g., if a simulation
+//          input of an interactive simulation experiment view is changed straight after copying), in which case we
+//          reset our copy button since its feedback would no longer be about our (current) issues. We only do this if
+//          what would be copied has changed, i.e. not if our issues are recomputed and are the same as before.
+
+const copyToClipboard = vueCommon.useCopyToClipboard();
+
+const issuesText = vue.computed<string>(() => {
+  const domParser = new DOMParser();
+
+  return props.issues
+    .map((issue) => {
+      const description = domParser.parseFromString(issue.description, 'text/html').body.textContent ?? '';
+
+      return `${ISSUE_TYPES[issue.type].label}: ${description}`;
+    })
+    .join('\n');
+});
+
+const copyIssues = (): void => {
+  void copyToClipboard.copy(issuesText.value);
+};
+
+vue.watch(issuesText, () => {
+  copyToClipboard.reset();
+});
 </script>
 
 <style scoped>
-.empty-state {
-  color: var(--p-message-success-color);
+/**
+ * Note: we may be shown in a narrow container (e.g., when OpenCOR is embedded in a page alongside other OpenCOR
+ *       instances), so we adapt our layout to the width of our container: our header can wrap and, if really narrow,
+ *       the icon of an issue gets shown inline with its description, which can then use all of the available width.
+ */
+
+.issues {
+  display: flex;
+  flex-direction: column;
+  container-type: inline-size;
 }
 
-.header-title {
-  color: var(--p-text-color);
-}
-
-.header-title > i {
-  color: var(--p-text-muted-color);
-}
-
-.issues-container {
-  border-color: var(--p-content-border-color);
-}
-
-.issue-count.error {
-  background-color: var(--p-message-error-color);
-}
-
-.issue-count.information {
-  background-color: var(--p-message-info-color);
-}
-
-.issue-count.warning {
-  background-color: var(--p-message-warn-color);
-}
-
-.issue-description {
-  color: var(--p-text-color);
-}
-
-.issue-item.severity-error {
-  border-color: var(--p-message-error-color);
-}
-
-.issue-item.severity-information {
-  border-color: var(--p-message-info-color);
-}
-
-.issue-item.severity-warning {
-  border-color: var(--p-message-warn-color);
-}
+/**
+ * Header.
+ */
 
 .issues-header {
-  border-color: var(--p-content-border-color);
+  display: flex;
+  flex-shrink: 0;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.25rem 0.75rem;
+  min-height: 2.5rem;
+  padding: 0.375rem 0.5rem 0.375rem 0.875rem;
+  border-bottom: 1px solid var(--p-content-border-color);
 }
 
-:deep(.p-scrollpanel-content) {
-  padding: 0;
+.issues-title {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--p-text-color);
+  font-size: 0.875rem;
+  font-weight: 600;
 }
 
-.severity-error {
-  color: var(--p-message-error-color);
+.issues-title-icon {
+  color: var(--p-text-muted-color);
+  font-size: 0.875rem;
 }
 
-.severity-information {
-  color: var(--p-message-info-color);
+.issues-summary {
+  display: flex;
+  align-items: center;
+  gap: 0.625rem;
+  margin-left: auto;
 }
 
-.severity-warning {
-  color: var(--p-message-warn-color);
-}
-
-.summary-item {
+.issues-summary-item {
   display: flex;
   align-items: center;
   gap: 0.25rem;
   font-size: 0.75rem;
-  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  font-weight: 600;
 }
 
-.summary-item.error {
-  color: var(--p-message-error-color);
-}
-
-.summary-item.information {
-  color: var(--p-message-info-color);
-}
-
-.summary-item.warning {
-  color: var(--p-message-warn-color);
-}
-
-.summary-item i {
+.issues-summary-item .pi {
   font-size: 0.75rem;
+}
+
+/**
+ * Content.
+ */
+
+.issues-content {
+  flex-grow: 1;
+  min-height: 0;
+}
+
+/**
+ * Note: PrimeVue makes the content of a scroll panel wider and taller than the scroll panel itself, and then pads it,
+ *       so that the native scrollbars are out of view. However, those scrollbars are hidden anyway, so we don't need
+ *       that trick, which would otherwise clip the right side of our issues and add some space below them.
+ */
+
+:deep(.p-scrollpanel-content) {
+  width: 100%;
+  height: 100%;
+  padding: 0;
+}
+
+.issues-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  height: 100%;
+  min-height: 4rem;
+  padding: 1rem;
+  color: var(--opencor-success-color);
+  font-size: 0.875rem;
+}
+
+.issues-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.375rem;
+  padding: 0.625rem;
+}
+
+.issues-list-extra-space {
+  padding-bottom: 1.125rem;
+}
+
+.issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.625rem;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid color-mix(in srgb, var(--issue-color) 25%, transparent);
+  border-radius: 0.375rem;
+  background-color: color-mix(in srgb, var(--issue-color) 6%, transparent);
+}
+
+/**
+ * Note: our icon is as tall as the first line of our description, so that it is aligned with it.
+ */
+
+.issue-icon {
+  display: flex;
+  flex-shrink: 0;
+  align-items: center;
+  height: 1.25rem;
+  color: var(--issue-color);
+  font-size: 0.875rem;
+}
+
+.issue-description {
+  flex-grow: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--p-text-color);
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+  user-select: text;
+}
+
+/**
+ * Severities.
+ */
+
+.issue-error {
+  --issue-color: var(--opencor-error-color);
+
+  color: var(--issue-color);
+}
+
+.issue-warning {
+  --issue-color: var(--opencor-warn-color);
+
+  color: var(--issue-color);
+}
+
+.issue-information {
+  --issue-color: var(--opencor-info-color);
+
+  color: var(--issue-color);
+}
+
+/**
+ * Adapt our layout to the width of our container.
+ */
+
+@container (width < 16rem) {
+  .issues-header {
+    padding-left: 0.625rem;
+  }
+
+  .issues-list {
+    padding: 0.375rem;
+  }
+
+  .issue {
+    display: block;
+    padding: 0.375rem 0.5rem;
+  }
+
+  .issue-icon {
+    display: inline;
+    margin-right: 0.375rem;
+  }
 }
 </style>

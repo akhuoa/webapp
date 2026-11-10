@@ -2,29 +2,23 @@
   <div ref="rootRef" class="simulation-experiment-view toolbar-based-view h-full flex flex-col">
     <IssuesView v-if="issues.length" class="m-4 mb-0" style="height: calc(100% - 2rem);" :issues="issues" />
     <template v-else>
-      <Toolbar v-if="!simulationOnly" class="p-1! shrink-0">
+      <Toolbar v-if="!simulationOnly" class="shrink-0">
         <template #start>
           <div class="flex gap-1 invisible">
-            <Button class="p-1! toolbar-button"
-              icon="pi pi-play-circle"
-            />
-            <Button class="p-1! toolbar-button"
-              icon="pi pi-stop-circle"
-            />
+            <ToolbarButtonWidget icon="pi pi-play-circle" />
+            <ToolbarButtonWidget icon="pi pi-stop-circle" />
           </div>
         </template>
         <template #end>
           <div class="flex gap-1">
-            <Button class="p-1! toolbar-button"
+            <ToolbarButtonWidget
               icon="pi pi-download"
-              text severity="secondary"
-              title="Export COMBINE archive"
+              label="Export COMBINE archive"
               @click="onDownloadCombineArchive"
             />
-            <Button class="p-1! toolbar-button"
+            <ToolbarButtonWidget
               icon="pi pi-cog"
-              text severity="secondary"
-              title="Settings"
+              label="Settings"
               @click="settingsVisible = true"
             />
           </div>
@@ -32,135 +26,132 @@
       </Toolbar>
       <div class="grow min-h-0">
         <div class="flex h-full">
-          <div v-if="uiJsonEmpty" class="flex flex-col items-center justify-center grow">
-            <i class="pi pi-info-circle text-[1.5rem]! text-muted-color mb-3"></i>
-            <p class="text-muted-color text-center">
-              The view needs to be configured.
-              <template v-if="!simulationOnly">
-                <br />
-                Please click on the <i class="pi pi-cog"></i> icon in the top-right corner.
-              </template>
-            </p>
+          <div v-if="uiJsonEmpty" class="empty-view">
+            <i class="pi pi-sliders-h empty-view-icon"></i>
+            <p class="empty-view-title">The view needs to be configured.</p>
+            <template v-if="!simulationOnly">
+              <p class="empty-view-text">Its simulation inputs, simulation data, and plots can be configured in its settings.</p>
+              <!--
+              Note: like our toolbar buttons (see ToolbarButtonWidget.vue), this button doesn't get the focus when it is
+                    clicked, so that it doesn't look focused once our settings dialog has been closed.
+              -->
+              <Button icon="pi pi-cog" label="Open settings" size="small" @mousedown.prevent @click="settingsVisible = true" />
+            </template>
           </div>
           <IssuesView v-else-if="uiJsonIssues.length" class="w-full m-4" :issues="uiJsonIssues" />
-          <div v-else class="flex grow min-h-0">
-            <div class="ml-4 mr-4 mb-4">
+          <div v-else class="panels flex grow min-h-0" :class="{ 'narrow-layout': narrowLayout }">
+            <div class="side-panel-column">
               <ScrollPanel class="h-full">
-                <Fieldset :id="inputsFieldsetId" class="inputs-fieldset">
-                  <template #legend>
-                    <div class="relative flex items-center">
-                      <span :id="`${inputsFieldsetId}_header`" class="p-fieldset-legend-label">Simulation inputs</span>
-                      <span class="inputs-fieldset-line grow ms-3"></span>
-                      <div class="inputs-fieldset-reset"
-                        :class="{ 'inputs-fieldset-reset-hidden': allSimulationInputsAtDefaultValues }"
-                      >
-                        <Button class="p-0! w-5! h-5! reset-inputs-button"
-                          icon="pi pi-undo"
-                          text severity="secondary"
-                          size="small"
-                          title="Reset all simulation inputs to their default values"
-                          :disabled="allSimulationInputsAtDefaultValues"
-                          @mousedown.prevent
-                          @click="onResetInputs"
-                        />
-                      </div>
-                    </div>
-                  </template>
-                  <InputWidget ref="inputWidgetsRef"
-                    v-for="(input, index) in actualUiJson.input"
-                    v-model="inputValues[index]!"
-                    v-show="showInput[index]"
-                    :key="`input_${index}`"
-                    :name="input.name"
-                    :defaultValue="input.defaultValue"
-                    :maximumValue="locApi.isScalarInput(input) ? input.maximumValue : undefined"
-                    :minimumValue="locApi.isScalarInput(input) ? input.minimumValue : undefined"
-                    :possibleValues="locApi.isDiscreteInput(input) ? input.possibleValues : undefined"
-                    :stepValue="locApi.isScalarInput(input) ? input.stepValue : undefined"
-                    :class="index !== 0 ? 'mt-6' : ''"
-                    @change="onInputChange()"
-                    @changeEnd="onInputChangeEnd()"
-                    @atDefaultValueChange="(_name: string, atDefaultValue: boolean) => onInputAtDefaultValueChange(index, atDefaultValue)"
-                  />
-                </Fieldset>
-                <Fieldset legend="Runs">
-                  <div class="flex flex-col gap-4">
-                    <div class="flex gap-2">
-                      <Button class="grow"
-                        icon="pi pi-plus"
-                        label="Track run"
-                        outlined
-                        size="small"
-                        title="Track current run"
-                        :disabled="isSimulating || simulationIssues.length > 0"
-                        @click="onTrackRun"
+                <div class="side-panel">
+                  <!-- Simulation inputs -->
+
+                  <section class="side-panel-section">
+                    <div class="side-panel-header">
+                      <h3 class="opencor-section-title opencor-section-title-small">Simulation inputs</h3>
+                      <ToolbarButtonWidget :class="{ invisible: allSimulationInputsAtDefaultValues }"
+                        icon="pi pi-undo"
+                        label="Reset all simulation inputs"
+                        small
+                        tooltipAlign="end"
+                        keepFocus
+                        :disabled="allSimulationInputsAtDefaultValues"
+                        @click="onResetInputs($event)"
                       />
-                      <Button class="w-9!"
+                    </div>
+                    <div ref="simulationInputsRef" class="side-panel-fields">
+                      <InputWidget ref="inputWidgetsRef"
+                        v-for="(input, index) in actualUiJson.input"
+                        v-model="inputValues[index]!"
+                        v-show="showInput[index]"
+                        :key="`input_${index}`"
+                        :name="input.name"
+                        :defaultValue="input.defaultValue"
+                        :maximumValue="locApi.isScalarInput(input) ? input.maximumValue : undefined"
+                        :minimumValue="locApi.isScalarInput(input) ? input.minimumValue : undefined"
+                        :possibleValues="locApi.isDiscreteInput(input) ? input.possibleValues : undefined"
+                        :stepValue="locApi.isScalarInput(input) ? input.stepValue : undefined"
+                        @change="onInputChange()"
+                        @changeEnd="onInputChangeEnd()"
+                        @atDefaultValueChange="(_name: string, atDefaultValue: boolean) => onInputAtDefaultValueChange(index, atDefaultValue)"
+                      />
+                    </div>
+                  </section>
+
+                  <!-- Runs -->
+
+                  <section class="side-panel-section">
+                    <div class="side-panel-header">
+                      <h3 class="opencor-section-title opencor-section-title-small">Runs</h3>
+                      <ToolbarButtonWidget :class="{ invisible: runs.length === 1 }"
                         icon="pi pi-trash"
-                        outlined severity="danger"
-                        size="small"
-                        title="Remove all tracked runs"
-                        @click="onRemoveAllRuns"
+                        label="Remove all tracked runs"
+                        small
+                        tooltipAlign="end"
                         :disabled="runs.length === 1"
+                        @click="onRemoveAllRuns($event)"
                       />
                     </div>
-                    <div class="flex flex-col gap-2">
+                    <Button ref="trackRunButtonRef" class="w-full"
+                      icon="pi pi-plus"
+                      label="Track run"
+                      outlined
+                      size="small"
+                      :disabled="isSimulating || simulationIssues.length > 0"
+                      @click="onTrackRun"
+                    />
+                    <div ref="runsListRef" class="runs-list">
                       <div v-for="(run, index) in runs"
                         :key="run.id"
-                        class="run-card rounded-lg p-1 pl-2 opacity-75 hover:opacity-100"
-                        :class="{ 'run-card-live': run.isLiveRun, 'opacity-50': !run.isVisible }"
+                        class="run-row"
+                        :class="{ 'run-row-hidden': !run.isVisible }"
                       >
-                        <div class="flex items-center">
-                          <div class="w-1 h-6 rounded-xs mr-2" :style="`background-color: ${run.color};`"></div>
-                          <TooltipWidget :content="run.isLiveRun ? '' : run.tooltip"
-                            class="grow text-sm"
-                            :class="{ 'cursor-help': !run.isLiveRun, 'opacity-50': !run.isVisible }"
-                          >
-                            {{ run.isLiveRun ? 'Live run' : `Run #${index}` }}
-                          </TooltipWidget>
-                          <div class="flex items-center">
-                            <Button class="p-0! w-5! h-5! run-action-button"
-                              icon="pi pi-palette"
-                              text
-                              size="small"
-                              :style="`color: ${run.color};`"
-                              :title="`Change ${run.isLiveRun ? 'live run' : 'run'} colour`"
-                              @click="onToggleRunColorPopover(index, $event)"
-                            />
-                            <Button class="p-0! w-5! h-5! run-action-button"
-                              :icon="run.isVisible ? 'pi pi-eye' : 'pi pi-eye-slash'"
-                              text :severity="run.isVisible ? 'info' : 'secondary'"
-                              size="small"
-                              :title="`${run.isVisible ? 'Hide' : 'Show'} ${run.isLiveRun ? 'live run' : 'run'}`"
-                              @click="onToggleRun(index)"
-                            />
-                            <Button v-if="!run.isLiveRun" class="p-0! w-5! h-5! run-action-button"
-                              icon="pi pi-times"
-                              text severity="danger"
-                              size="small"
-                              title="Remove run"
-                              @click="onRemoveRun(index)"
-                            />
-                            <div v-else class="w-5 h-5"></div>
-                          </div>
+                        <ToolbarButtonWidget class="run-color-button"
+                          icon="pi pi-circle-fill"
+                          :label="`Change ${runName(run, index)} colour`"
+                          small
+                          :style="{ '--toolbar-button-color': run.color, '--toolbar-button-hover-color': run.color }"
+                          @click="onToggleRunColorPopover(index, $event)"
+                        />
+                        <div v-hint.html="run.isLiveRun ? '' : run.tooltip"
+                          class="run-name grow min-w-0"
+                          :class="{ 'cursor-help': !run.isLiveRun }"
+                        >
+                          {{ runName(run, index, true) }}
+                        </div>
+                        <div class="run-actions">
+                          <ToolbarButtonWidget class="run-visibility-button"
+                            :icon="run.isVisible ? 'pi pi-eye' : 'pi pi-eye-slash'"
+                            :label="`${run.isVisible ? 'Hide' : 'Show'} ${runName(run, index)}`"
+                            small
+                            tooltipAlign="end"
+                            @click="onToggleRun(index)"
+                          />
+                          <ToolbarButtonWidget v-if="!run.isLiveRun" class="run-remove-button"
+                            icon="pi pi-times"
+                            :label="`Remove ${runName(run, index)}`"
+                            small
+                            tooltipAlign="end"
+                            @click="onRemoveRun(index)"
+                          />
+                          <div v-else class="w-6 h-6"></div>
                         </div>
                       </div>
                     </div>
-                    <div v-if="runs.length === 1" class="empty-state p-2 text-center rounded-lg">
-                      <i class="pi pi-info-circle empty-state-icon mb-1.5 opacity-50"></i>
-                      <p class="text-xs">
-                        No runs are being tracked.
-                      </p>
+                    <div v-if="runs.length === 1" class="empty-state">
+                      No runs are being tracked.
                     </div>
-                  </div>
-                </Fieldset>
-                <Fieldset v-if="preSimulationDuration" legend="Note" class="note">
-                  The simulation was run for <br/>
-                  <strong>{{ preSimulationDuration }} {{ voiUnit }}</strong> prior to plotting.
-                </Fieldset>
+                  </section>
+
+                  <!-- Note -->
+
+                  <p v-if="preSimulationDuration" class="side-panel-hint">
+                    <i class="pi pi-info-circle"></i>
+                    <span>The simulation was run for <strong>{{ preSimulationDuration }} {{ voiUnit }}</strong> prior to plotting.</span>
+                  </p>
+                </div>
               </ScrollPanel>
             </div>
-            <div class="relative flex flex-col grow h-full min-h-0">
+            <div class="plots-column relative flex flex-col grow h-full min-h-0">
               <div class="flex flex-col grow gap-2 min-h-0" :class="{ 'invisible pointer-events-none': simulationIssues.length }">
                 <GraphPanelWidget
                   v-for="(_plot, index) in actualUiJson.output.plots"
@@ -172,7 +163,7 @@
                   @marginsUpdated="(newMargins: IGraphPanelMargins) => onMarginsUpdated(`plot_${index}`, newMargins)"
                 />
               </div>
-              <IssuesView v-show="simulationIssues.length" class="absolute inset-0 m-4 ml-0" :issues="simulationIssues" />
+              <IssuesView v-show="simulationIssues.length" class="absolute inset-0 m-4" :issues="simulationIssues" />
             </div>
           </div>
         </div>
@@ -191,13 +182,19 @@
           @close="settingsVisible = false"
         />
       </Teleport>
-      <Popover ref="runColorPopoverRef" :appendTo="appendTarget">
-        <div class="flex p-1.5 gap-2">
-          <button class="color-swatch cursor-pointer w-6 h-6 outline-2 outline-transparent rounded-md hover:scale-[1.15]"
+      <Popover ref="runColorPopoverRef" :appendTo="appendTarget"
+        @show="runColorPopoverVisible = true"
+        @hide="runColorPopoverVisible = false"
+      >
+        <div class="flex p-2 gap-2" tabindex="-1" :autofocus="!runColorPopoverOpenedUsingKeyboard" @keydown="onColorSwatchesKeyDown">
+          <button class="color-swatch cursor-pointer w-6 h-6 outline-2 outline-transparent rounded-md"
             v-for="(name, color) in colors.PALETTE" :key="color"
+            type="button"
             :style="`background-color: ${color};`"
-            :class="{ 'color-swatch-selected': color === runs[runColorPopoverIndex].color }"
-            :title="name"
+            :class="{ 'color-swatch-selected': color === runs[runColorPopoverIndex]?.color }"
+            :autofocus="runColorPopoverOpenedUsingKeyboard && color === runs[runColorPopoverIndex]?.color"
+            :aria-pressed="color === runs[runColorPopoverIndex]?.color"
+            v-hint="name"
             @click="onRunColorChange(runColorPopoverIndex, color)"
           />
         </div>
@@ -221,6 +218,7 @@ import * as colors from '../../common/colors';
 import * as common from '../../common/common';
 import * as dependencies from '../../common/dependencies';
 import * as externalData from '../../common/externalData';
+import { vHint } from '../../common/hint';
 import * as locCommon from '../../common/locCommon';
 import * as math from '../../common/math';
 import * as vueCommon from '../../common/vueCommon';
@@ -263,10 +261,10 @@ const { simulationOnly } = useOpenCORContext();
 
 const opencorElement = vue.shallowRef<HTMLElement | null>(null);
 const fileTabElement = vue.shallowRef<HTMLElement | null>(null);
-// Note: our settings dialog is rendered in our OpenCOR element (rather than in our file tab) so that, like all the other
-//       dialogs, it covers the whole of OpenCOR, including our main menu and file tabs. It still gets our styles since
-//       it is given our simulation-experiment-view class, and it is still centred over our file tab, i.e. the element
-//       in which we are laid out (our nearest positioned ancestor).
+// Note: our settings dialog is rendered in our OpenCOR element (rather than in our file tab) so that, like all the
+//       other dialogs, it covers the whole of OpenCOR, including our main menu and file tabs. It still gets our styles
+//       since it is given our simulation-experiment-view class, and it is still centred over our file tab, i.e. the
+//       element in which we are laid out (our nearest positioned ancestor).
 const rootRef = vue.shallowRef<HTMLElement | null>(null);
 const settingsVisible = vue.ref<boolean>(false);
 const document = props.file.document();
@@ -277,11 +275,9 @@ const cvode = uniformTimeCourse?.cvode() ?? null;
 const mathEval = new math.Float64ArrayMath();
 const model = isDocumentValid ? document.model(0) : null;
 
-// The ID of our simulation inputs' fieldset.
-// Note: we customise the legend of our simulation inputs' fieldset, so we need to give its label the ID that the
-//       fieldset expects (i.e. `<fieldset id>_header`) for its contents to still be labelled by it.
+// Whether we use a narrow layout, i.e. whether our side panel is stacked above our plots (see .narrow-layout below).
 
-const inputsFieldsetId = `simulationInputs${vue.getCurrentInstance()?.uid}`;
+const narrowLayout = vueCommon.useNarrowLayout(rootRef);
 
 // Some helper functions to evaluate and apply the model changes resulting from the given parameters and scope.
 
@@ -540,6 +536,8 @@ const runs = vue.ref<ISimulationRun[]>([
 let trackedRunId = 0;
 let simulationGeneration = 0;
 const runColorPopoverIndex = vue.ref<number>(-1);
+const runColorPopoverVisible = vue.ref<boolean>(false);
+const runColorPopoverOpenedUsingKeyboard = vue.ref<boolean>(false);
 const runColorPopoverRef = vue.ref<InstanceType<typeof Popover> | undefined>();
 const graphPanelRefs = vue.ref<Record<number, InstanceType<typeof GraphPanelWidget> | undefined>>({});
 const appendTarget = vueCommon.useAppendTarget(rootRef as unknown as vue.Ref<HTMLElement | null>);
@@ -1441,8 +1439,8 @@ const runSimulation = async (currentSimulationGeneration: number): Promise<void>
     return;
   }
 
-  // Use our instance as is if it has yet to be run and was instantiated with the same model changes (e.g., for our first
-  // simulation run), otherwise apply the model changes and create a fresh instance for the new simulation run.
+  // Use our instance as is if it has yet to be run and was instantiated with the same model changes (e.g., for our
+  // first simulation run), otherwise apply the model changes and create a fresh instance for the new simulation run.
   // Note: using a fresh instance ensures that it picks up the latest model changes and avoids reusing an instance which
   //       internal state may have been corrupted by a previous cancellation.
 
@@ -1933,6 +1931,8 @@ const onTrackRun = (): void => {
   }
 
   // Compute the tooltip for this run, keeping in mind that some simulation inputs may not be visible.
+  // Note: our tooltip is a rich hint (see common/hint.ts), so we escape the name and value of our simulation inputs,
+  //       which come from our UI JSON (i.e. from our file) and are shown as plain text elsewhere (see InputWidget.vue).
 
   const tooltipRows: string[] = [];
 
@@ -1961,14 +1961,9 @@ const onTrackRun = (): void => {
       }
     }
 
-    tooltipRows.push(`<tr style="vertical-align: top;">
-      <td style="font-weight: bold;">
-        ${input.name}:
-      </td>
-      <td style="padding-left: 8px;">
-        ${inputValue}
-      </td>
-    </tr>`);
+    tooltipRows.push(
+      `<tr><th>${common.escapeHtml(input.name)}:</th><td>${common.escapeHtml(String(inputValue ?? ''))}</td></tr>`
+    );
   }
 
   const tooltip = `<table>
@@ -2013,16 +2008,86 @@ const onTrackRun = (): void => {
   });
 };
 
+// The name of the given run (e.g., "live run" or "run #3"), which is used in the labels of the buttons of a run, so
+// that they say which run they are for (e.g., when read by a screen reader), and, capitalised, as the name of the run
+// itself.
+
+const runName = (run: ISimulationRun, index: number, capitalised = false): string => {
+  const res = run.isLiveRun ? 'live run' : `run #${index}`;
+
+  return capitalised ? res.charAt(0).toUpperCase() + res.slice(1) : res;
+};
+
+// Keep the keyboard focus within our runs when one (or all) of them gets removed while the keyboard focus is on its (or
+// their) remove button (or on another of its (or their) buttons) or on our Remove all tracked runs button since the
+// focused button would otherwise disappear (or get disabled) and the keyboard focus would be lost. The keyboard focus
+// goes to the remove button of the run that takes the place of the removed run or, if there is none, of the previous
+// run, or to our Track run button if there are no tracked runs anymore (or to the visibility button of our live run if
+// our Track run button is disabled, e.g., if our simulation has issues).
+// Note: a toolbar button doesn't get the focus when it is clicked (see ToolbarButtonWidget.vue), so a button only has
+//       the focus if it was focused using the keyboard (be it then activated using the keyboard or the mouse).
+
+const runsListRef = vue.useTemplateRef<HTMLElement>('runsListRef');
+const trackRunButtonRef = vue.useTemplateRef<{ $el: HTMLElement }>('trackRunButtonRef');
+
+// Whether the keyboard focus is on one of the buttons of the runs from the given index onwards (up to the given number
+// of runs).
+
+const runsHaveFocus = (index: number, count = Infinity): boolean => {
+  const activeElement = window.document.activeElement;
+
+  return Array.from(runsListRef.value?.children ?? [])
+    .slice(index, index + count)
+    .some((runRow: Element) => runRow.contains(activeElement));
+};
+
+const keepFocusAfterRunRemoval = async (index: number): Promise<void> => {
+  await vue.nextTick();
+
+  // Note: the live run has no remove button, so the remove button of the run at the given index is at index - 1.
+
+  const removeButtons = Array.from(runsListRef.value?.querySelectorAll<HTMLElement>('.run-remove-button') ?? []);
+  const removeButton = removeButtons[Math.min(index, removeButtons.length) - 1];
+
+  if (removeButton) {
+    removeButton.focus();
+
+    return;
+  }
+
+  const trackRunButton = trackRunButtonRef.value?.$el;
+
+  if (trackRunButton instanceof HTMLButtonElement && !trackRunButton.disabled) {
+    trackRunButton.focus();
+  } else {
+    runsListRef.value?.querySelector<HTMLElement>('.run-visibility-button')?.focus();
+  }
+};
+
 const onRemoveRun = (index: number): void => {
   // Remove the given run.
 
+  const hadFocus = runsHaveFocus(index, 1);
+
   runs.value.splice(index, 1);
+
+  if (hadFocus) {
+    void keepFocusAfterRunRemoval(index);
+  }
 };
 
-const onRemoveAllRuns = (): void => {
+const onRemoveAllRuns = (event?: Event): void => {
   // Remove all the runs except the live run.
+  // Note: we may also be called programmatically (e.g., when our settings get updated), in which case there is no
+  //       event.
+
+  const hadFocus = !!event && (event.currentTarget === window.document.activeElement || runsHaveFocus(1));
 
   runs.value.splice(1);
+
+  if (hadFocus) {
+    void keepFocusAfterRunRemoval(1);
+  }
 };
 
 const onToggleRun = (index: number): void => {
@@ -2043,10 +2108,98 @@ const onRunColorChange = (index: number, color: string): void => {
   }
 };
 
-const onToggleRunColorPopover = (index: number, event: MouseEvent): void => {
-  runColorPopoverIndex.value = index;
+// Show/hide our colour popover for the given run.
+// Note #1: when our popover is shown using the keyboard, the swatch of the current colour of our run is focused (see
+//          its autofocus attribute), so that our popover can be used with the keyboard straightaway. When it is shown
+//          using the mouse, our swatches are focused (and therefore get a focus ring and show their hint) only once the
+//          keyboard is used, so it is our swatches' container that is focused (see its autofocus attribute) and the
+//          swatch of the current colour of our run gets focused as soon as Tab or an arrow key is pressed (or the
+//          first/last swatch if Home/End is pressed, see onColorSwatchesKeyDown()). Otherwise, the swatch of the
+//          current colour of our run would be focused programmatically, in which case the browser decides whether it
+//          gets a focus ring (and therefore shows its hint) based on how the keyboard focus was last moved (e.g., not
+//          once a swatch has been clicked).
+// Note #2: a click event that is triggered using the keyboard (i.e. using Enter or Space) has no detail.
+// Note #3: our popover keeps the keyboard focus within itself (i.e. Tab goes from one swatch to another), and Escape
+//          hides it and gives the keyboard focus back to the colour button of our run.
+// Note #4: the left/right arrow keys also go from one swatch to another (wrapping around), and the Home/End keys go to
+//          the first/last swatch (see onColorSwatchesKeyDown()).
+// Note #5: our popover is toggled when the colour button of the run for which it is shown is pressed, but it is moved
+//          to another run when the colour button of that run is pressed, i.e. it is hidden and then shown again for
+//          that run (so that it gets aligned with, and focused for, that run). Our run is only updated once our popover
+//          has started hiding, so that it doesn't show the colour of the other run while hiding. Also, our popover is
+//          shown again for the colour button that was pressed, which we must therefore pass on explicitly since the
+//          current target of the event cannot be relied upon by then (e.g., it is null once the event has been
+//          dispatched, as is the case for a click that is triggered programmatically).
 
-  runColorPopoverRef.value?.toggle(event);
+const onToggleRunColorPopover = async (index: number, event: MouseEvent): Promise<void> => {
+  const popover = runColorPopoverRef.value;
+  const colorButton = event.currentTarget;
+  const openedUsingKeyboard = event.detail === 0;
+
+  if (!popover || !(colorButton instanceof HTMLElement)) {
+    return;
+  }
+
+  if (runColorPopoverVisible.value && runColorPopoverIndex.value !== index) {
+    popover.hide();
+
+    await vue.nextTick();
+
+    runColorPopoverIndex.value = index;
+    runColorPopoverOpenedUsingKeyboard.value = openedUsingKeyboard;
+
+    popover.show({ currentTarget: colorButton } as unknown as Event, colorButton);
+
+    return;
+  }
+
+  runColorPopoverIndex.value = index;
+  runColorPopoverOpenedUsingKeyboard.value = openedUsingKeyboard;
+
+  popover.toggle(event);
+};
+
+const onColorSwatchesKeyDown = (event: KeyboardEvent): void => {
+  if (!['Tab', 'ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) {
+    return;
+  }
+
+  const swatches = Array.from((event.currentTarget as HTMLElement).querySelectorAll<HTMLElement>('.color-swatch'));
+  const index = swatches.indexOf(window.document.activeElement as HTMLElement);
+
+  // Focus the swatch of the current colour of our run (or the first/last swatch) if no swatch has the focus yet, i.e.
+  // if our popover was shown using the mouse (see Note #1 above).
+
+  if (index === -1) {
+    event.preventDefault();
+
+    const selectedIndex = swatches.findIndex((swatch: HTMLElement) =>
+      swatch.classList.contains('color-swatch-selected')
+    );
+
+    swatches[
+      event.key === 'Home' ? 0 : event.key === 'End' ? swatches.length - 1 : Math.max(selectedIndex, 0)
+    ]?.focus();
+
+    return;
+  }
+
+  // Let our popover handle Tab (see Note #3 above).
+
+  if (event.key === 'Tab') {
+    return;
+  }
+
+  event.preventDefault();
+
+  const newIndex =
+    event.key === 'Home'
+      ? 0
+      : event.key === 'End'
+        ? swatches.length - 1
+        : (index + (event.key === 'ArrowRight' ? 1 : -1) + swatches.length) % swatches.length;
+
+  swatches[newIndex]?.focus();
 };
 
 // Download COMBINE archive.
@@ -2171,15 +2324,15 @@ const onSettingsOk = (updatedSettings: ISimulationExperimentInteractiveViewSetti
 
   // Make sure that our next simulation run doesn't use our current instance since it was instantiated using our old
   // settings.
-  // Note: this is only relevant if our current instance has yet to be run (e.g., if our previous simulation run couldn't
-  //       be started because of some issues).
+  // Note: this is only relevant if our current instance has yet to be run (e.g., if our previous simulation run
+  //       couldn't be started because of some issues).
 
   instanceIsPristine = false;
 
   // Remove the model changes from our previous simulation run if our new UI JSON is invalid.
   // Note: we don't run any simulation with an invalid UI JSON, so those model changes would otherwise be left in our
-  //       document and, therefore, be exported with it (see onDownloadCombineArchive()) even though they don't match our
-  //       new UI JSON.
+  //       document and, therefore, be exported with it (see onDownloadCombineArchive()) even though they don't match
+  //       our new UI JSON.
 
   if (uiJsonIssues.value.length > 0) {
     applyModelChanges([]);
@@ -2282,11 +2435,44 @@ const allSimulationInputsAtDefaultValues = vue.computed<boolean>(() => {
   });
 });
 
-const onResetInputs = (): void => {
+// Give the keyboard focus to our first visible simulation input, if our Reset all simulation inputs button had it,
+// since that button gets hidden (and disabled) once all our simulation inputs are at their default values, and the
+// keyboard focus would otherwise be lost (as when removing runs, see keepFocusAfterRunRemoval()).
+// Note #1: our reset button keeps the focus where it is when clicked (see its keepFocus property), so it only has the
+//          focus if it was focused using the keyboard.
+// Note #2: we look for the first element that can be tabbed to, i.e. the text field of a scalar input or the select of
+//          a discrete input, since it comes before the other elements of an input that can be tabbed to (e.g., the
+//          handle of the slider of a scalar input). We do this using the DOM since the order of our input widgets in
+//          inputWidgetsRef is not guaranteed to be the order in which they are shown.
+
+const simulationInputsRef = vue.useTemplateRef<HTMLElement>('simulationInputsRef');
+const TABBABLE_ELEMENTS = 'input:not([type="hidden"], [tabindex="-1"]), [tabindex]:not([tabindex="-1"])';
+
+const keepFocusAfterInputsReset = async (resetButton: Element): Promise<void> => {
+  await vue.nextTick();
+
+  // Don't move the keyboard focus if it has gone somewhere else in the meantime (i.e. somewhere else than <body> or our
+  // reset button, which may keep the keyboard focus once disabled, depending on the browser).
+
+  const activeElement = window.document.activeElement;
+
+  if (activeElement && activeElement !== window.document.body && activeElement !== resetButton) {
+    return;
+  }
+
+  Array.from(simulationInputsRef.value?.querySelectorAll<HTMLElement>(TABBABLE_ELEMENTS) ?? [])
+    .find((element: HTMLElement) => element.getClientRects().length > 0 && !element.matches(':disabled'))
+    ?.focus();
+};
+
+const onResetInputs = (event: Event): void => {
+  const resetButton = event.currentTarget instanceof Element ? event.currentTarget : null;
+  const hadFocus = !!resetButton && resetButton === window.document.activeElement;
+
   // Discard any value that is being edited, so that it doesn't get committed (and simulated) once its input loses the
   // focus.
-  // Note: our reset button doesn't take the focus when clicked, so that the input that has the focus (if any) doesn't
-  //       commit its value before we get here.
+  // Note: our reset button keeps the focus where it is when clicked (see its keepFocus property), so that the input
+  //       that has the focus (if any) doesn't commit its value before we get here.
 
   for (const inputWidget of inputWidgetsRef.value) {
     inputWidget.discardEdit();
@@ -2300,17 +2486,25 @@ const onResetInputs = (): void => {
   });
 
   if (
-    defaultInputValues.every((defaultInputValue: number, index: number) => {
+    !defaultInputValues.every((defaultInputValue: number, index: number) => {
       return inputValues.value[index] === defaultInputValue;
     })
   ) {
-    return;
+    inputValues.value = defaultInputValues;
+
+    onInputChange();
+    onInputChangeEnd();
   }
 
-  inputValues.value = defaultInputValues;
+  // Keep the keyboard focus, if our reset button had it.
+  // Note: we do this once our inputs have been reset, so that we wait for our UI to reflect it (e.g., for our reset
+  //       button to be hidden and for some of our inputs to be shown/hidden, see runSimulation()). Otherwise, we would
+  //       look for our first visible simulation input before our UI gets updated, i.e. we might give the keyboard focus
+  //       to an input that is about to be hidden.
 
-  onInputChange();
-  onInputChangeEnd();
+  if (hadFocus) {
+    void keepFocusAfterInputsReset(resetButton);
+  }
 };
 
 // Make sure that any pending simulation updates are discarded once we get unmounted.
@@ -2372,6 +2566,11 @@ vue.onMounted(() => {
   box-shadow: 0 2px 8px var(--p-shadow-color-dark, rgba(255, 255, 255, 0.15));
 }
 
+/**
+ * Note: focus outlines are removed (see app.css), which would also remove the outline of the selected swatch when it
+ *       gets the focus, so we restore it.
+ */
+
 .color-swatch-selected {
   outline-color: var(--p-text-color);
 }
@@ -2380,112 +2579,194 @@ vue.onMounted(() => {
   outline: 2px solid var(--p-text-color) !important;
 }
 
-.empty-state {
-  color: var(--p-text-muted-color);
-  border: 1px dashed var(--p-content-border-color);
-}
+/**
+ * Focus ring of a swatch, which is like that of our other buttons (see app.css), i.e. a ring in the primary colour that
+ * is offset from the swatch (or, for the selected swatch, that is right outside its outline).
+ * Note: it is also shown when the swatch is hovered, hence the :hover variant, which takes precedence over the box
+ *       shadow of a hovered swatch (in both light and dark modes).
+ */
 
-.empty-state-icon {
-  font-size: 1.25rem;
+.color-swatch:focus-visible,
+.color-swatch:focus-visible:hover {
+  box-shadow:
+    0 0 0 2px var(--p-content-background),
+    0 0 0 4px var(--p-primary-color);
 }
 
 /**
- * Our inputs' reset button is only shown when there is something to reset, in which case it hides the part of our line
- * where it is (using our legend's background). Our line always goes all the way to the end of our legend (i.e. our
- * legend has no end padding or border), so that it looks like our fieldset's top border is uninterrupted when our reset
- * button is hidden.
- * Note #1: our line is drawn as a whole (rather than, say, using a separate element for the part where our reset button
- *          is) since Chrome may otherwise render that part one device pixel off our line (e.g., with a device pixel
- *          ratio of 1.25 or 1.75).
- * Note #2: the minimum width of our line accounts for our reset button and the space around it (i.e. our legend's end
- *          padding and border, which are now part of our line), so that our legend (and therefore our fieldset) is as
- *          wide as it would be if our reset button was part of our legend's layout, i.e. it doesn't change width when
- *          our reset button gets shown or hidden.
+ * Empty view, i.e. when our view has not been configured yet.
  */
 
-.inputs-fieldset :deep(.p-fieldset-legend) {
-  width: 100%;
-  padding-inline-end: 0;
-  border-inline-end-width: 0;
+.empty-view {
+  display: flex;
+  flex-direction: column;
+  flex-grow: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  padding: 1rem;
+  text-align: center;
 }
 
-.inputs-fieldset-line {
-  min-width: calc(0.75rem + 1.25rem + 0.75rem + 1px);
-  border-top: 1px solid var(--p-fieldset-border-color);
+.empty-view-icon {
+  margin-bottom: 0.25rem;
+  color: var(--p-text-muted-color);
+  font-size: 1.5rem;
 }
 
-.inputs-fieldset-reset {
-  position: absolute;
-  inset-block: 0;
-  inset-inline-end: 1px;
+.empty-view-title {
+  margin: 0;
+  color: var(--p-text-color);
+  font-weight: 600;
+}
+
+.empty-view-text {
+  margin: 0 0 0.5rem;
+  color: var(--p-text-muted-color);
+  font-size: 0.875rem;
+}
+
+/**
+ * Side panel, i.e. our simulation inputs and runs.
+ * Note: an input field has an intrinsic width (of about 20 characters), which would otherwise make our side panel wider
+ *       than we want, so we let our number fields shrink to the width of our side panel. This means that a number field
+ *       with a reset button doesn't need the negative margin that keeps its intrinsic width the same (see
+ *       InputScientificNumberWidget.vue), and which would otherwise make it overflow our side panel.
+ */
+
+.side-panel-column {
+  flex-shrink: 0;
+  width: 16rem;
+  border-right: 1px solid var(--p-content-border-color);
+}
+
+/**
+ * Narrow layout (see useNarrowLayout() in vueCommon.ts), i.e. our side panel is stacked above our plots (rather than
+ * shown to their left), so that our plots remain usable (e.g., on a phone or when OpenCOR is embedded in a small
+ * container). Our side panel then takes the whole width and part of the height of our view, and can be scrolled.
+ */
+
+.panels.narrow-layout {
+  flex-direction: column;
+}
+
+.narrow-layout .side-panel-column {
+  width: auto;
+  height: 40%;
+  border-right: none;
+  border-bottom: 1px solid var(--p-content-border-color);
+}
+
+.narrow-layout .plots-column {
+  flex: 1 1 0;
+  height: auto;
+}
+
+.side-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding: 1rem;
+}
+
+.side-panel :deep(.p-inputnumber .p-inputnumber-input) {
+  flex: 1 1 auto;
+  width: 0;
+  min-width: 0;
+  margin-right: 0;
+}
+
+.side-panel-section {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.side-panel-header {
   display: flex;
   align-items: center;
-  padding-inline: 0.75rem;
-  background: var(--p-fieldset-legend-background);
-  transition: opacity 0.15s;
+  justify-content: space-between;
+  min-height: 1.5rem;
 }
 
-.inputs-fieldset-reset-hidden {
-  opacity: 0;
+.side-panel-fields {
+  display: flex;
+  flex-direction: column;
+  gap: 1.5rem;
+  padding-top: 0.375rem;
 }
 
-.note {
+.side-panel-hint {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  margin: 0;
   color: var(--p-text-muted-color);
-  margin-top: 0.5rem;
-  border: 1px dashed var(--p-content-border-color);
-  padding: 0 0.5rem 0.5rem 0.5rem !important;
-  text-align: center;
+  font-size: 0.8125rem;
+  line-height: 1.25rem;
+}
+
+.side-panel-hint .pi {
+  line-height: inherit;
+}
+
+/**
+ * Runs, which actions are always shown (so that they can easily be discovered), but with small icons (the same size as
+ * that of our colour button), so that they don't stand out.
+ */
+
+.runs-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.125rem;
+}
+
+.run-row {
+  display: flex;
+  align-items: center;
+  gap: 0.375rem;
+  padding: 0.125rem 0.25rem 0.125rem 0.125rem;
+  border-radius: 0.375rem;
+  transition: background-color 0.15s ease;
+}
+
+.run-row:hover {
+  background-color: var(--p-content-hover-background);
+}
+
+.run-name {
+  overflow: hidden;
+  font-size: 0.875rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/**
+ * Note: we only fade the icon of the colour button of a hidden run since fading the button itself would also fade its
+ *       tooltip (see ToolbarButtonWidget.vue).
+ */
+
+.run-row-hidden .run-name,
+.run-row-hidden .run-color-button :deep(.toolbar-button-icon) {
+  opacity: 0.45;
+}
+
+.run-color-button :deep(.toolbar-button-icon),
+.run-actions :deep(.toolbar-button-icon) {
   font-size: 0.75rem;
 }
 
-.note :deep(.p-fieldset-legend) {
-  font-size: 0.875rem;
-  padding-top: 0;
-  padding-bottom: 0;
+.run-actions {
+  display: flex;
+  align-items: center;
 }
 
-.reset-inputs-button {
-  transition:
-    opacity 0.15s,
-    transform 0.15s;
-}
-
-.reset-inputs-button:not(:disabled) {
-  opacity: 0.75;
-}
-
-.reset-inputs-button:not(:disabled):hover {
-  opacity: 1;
-  transform: scale(1.15);
-}
-
-.reset-inputs-button:disabled {
-  opacity: 0;
-  transform: scale(0.5);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .inputs-fieldset-reset,
-  .reset-inputs-button {
-    transition: none;
-  }
-}
-
-.run-action-button {
-  opacity: 0.75;
-}
-
-.run-action-button:hover {
-  opacity: 1;
-  transform: scale(1.15);
-}
-
-.run-card {
-  border: 1px solid var(--p-content-border-color);
-}
-
-.run-card-live {
-  border-style: dashed;
-  border-color: var(--p-primary-color);
+.empty-state {
+  padding: 0.5rem;
+  border: 1px dashed var(--p-content-border-color);
+  border-radius: 0.5rem;
+  color: var(--p-text-muted-color);
+  font-size: 0.75rem;
+  text-align: center;
 }
 </style>

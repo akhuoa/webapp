@@ -32,6 +32,8 @@ const PRIMEVUE_COMPONENTS = [
   'dialog',
   'fieldset',
   'floatlabel',
+  'iconfield',
+  'inputicon',
   'inputnumber',
   'inputtext',
   'keyfilter',

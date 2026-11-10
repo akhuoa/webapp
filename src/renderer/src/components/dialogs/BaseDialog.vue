@@ -1,7 +1,14 @@
 <template>
+  <!--
+  Note: our mask covers the whole of OpenCOR (which may not cover the whole window, e.g., if it is embedded in a page),
+        so it is a container (named opencor-dialog) that can be queried to know whether our dialog should use a narrow
+        layout (see, for instance, AboutDialog.vue).
+  -->
   <Dialog ref="dialogRef" :modal="true" appendTo="self"
     :pt:mask:style="{
-      position: 'absolute'
+      position: 'absolute',
+      containerType: 'inline-size',
+      containerName: 'opencor-dialog'
     }"
     :pt:content="{
       class: 'h-full',
@@ -10,6 +17,7 @@
     :pt:footer="{
       style: 'padding-top: 20px'
     }"
+    :pt:transition="{ css: false }"
     @show="onShow"
     @hide="onHide"
   >

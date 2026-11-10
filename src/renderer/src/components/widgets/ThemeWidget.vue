@@ -1,11 +1,10 @@
 <template>
-  <button class="theme-widget flex items-center justify-center w-6 h-6 cursor-pointer rounded transition-colors duration-150"
-    type="button"
-    :title="`${THEMES[props.theme].label} theme (click to switch to ${THEMES[nextTheme()].label} theme)`"
+  <ToolbarButtonWidget
+    :icon="`pi ${THEMES[props.theme].icon}`"
+    :label="`${THEMES[props.theme].label} theme (click to switch to ${THEMES[nextTheme()].label} theme)`"
+    small
     @click="emit('switch', nextTheme())"
-  >
-    <i :class="`pi ${THEMES[props.theme].icon} text-sm`"></i>
-  </button>
+  />
 </template>
 
 <script setup lang="ts">
@@ -35,9 +34,3 @@ const nextTheme = (): OpenCORTheme => {
   return THEME_ORDER[(THEME_ORDER.indexOf(props.theme) + 1) % THEME_ORDER.length] ?? 'system';
 };
 </script>
-
-<style scoped>
-.theme-widget:hover {
-  background-color: var(--p-content-hover-background);
-}
-</style>

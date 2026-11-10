@@ -1,11 +1,19 @@
-/*
- * Note: our splash screen is not part of our app per se, which means that we don't have access to PrimeVue and must
- *       therefore hard-code colours.
+/**
+ * Note #1: our splash screen is not part of our app per se, which means that we don't have access to PrimeVue and must
+ *          therefore hard-code colours. It looks like our start screen (see BackgroundComponent.vue), i.e. our logo on
+ *          a subtle dot grid with our version and copyright below it.
+ * Note #2: our window is transparent (see SplashScreenWindow.ts), so we draw our own rounded corners, border, and
+ *          background, so that our splash screen looks the same on Windows, Linux, and macOS.
  */
 
+html,
 body {
-  background-color: #fff; /* Light version of --p-content-background. */
+  height: 100%;
   margin: 0;
+  background: transparent;
+}
+
+body {
   font-family:
     Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Oxygen, Ubuntu, Cantarell, "Fira Sans", "Droid Sans",
     "Helvetica Neue", sans-serif;
@@ -13,50 +21,74 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   user-select: none;
-  line-height: 1.6;
   overflow: hidden;
 }
 
-@media (prefers-color-scheme: dark) {
-  body {
-    background-color: #18181b; /* Dark version of --p-content-background. */
-  }
+.splash {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 100%;
+  border: 1px solid #e2e8f0; /* Light version of --p-content-border-color. */
+  border-radius: 0.75rem;
+  background-color: #fff; /* Light version of --p-content-background. */
+  overflow: hidden;
 }
 
-.contents {
-  border-collapse: collapse;
-  width: 100%;
+/**
+ * A subtle dot grid, which fades out towards our edges.
+ */
+
+.pattern {
+  position: absolute;
+  inset: 0;
+
+  /**
+   * Light version of --p-text-color.
+   */
+  background-image: radial-gradient(rgb(51 65 85 / 18%) 1px, transparent 1px);
+  background-size: 1.25rem 1.25rem;
+  mask-image: radial-gradient(ellipse at center, #000 0%, transparent 70%);
 }
 
-.copyright,
-.version {
-  border-top: 1px solid #33415522; /* Light variant version of --p-content-color. */
-  padding: 0 0.5rem;
-  background-color: #33415511; /* Light variant version of --p-content-color. */
-  color: #334155; /* Light version of --p-content-color. */
+/**
+ * Note: our logo's original dimensions are 828.12px x 704.92px.
+ */
+
+.logo {
+  position: relative;
+  width: 200px;
+  -webkit-user-drag: none;
 }
 
-@media (prefers-color-scheme: dark) {
-  .copyright,
-  .version {
-    border-top: 1px solid #fff2; /* Dark variant version of --p-content-color. */
-    background-color: #fff1; /* Dark variant version of --p-content-color. */
-    color: #fff; /* Dark version of --p-content-color. */
-  }
-}
-
-img.logo {
-  width: 413px;
-  height: 351px;
-  margin: 0.5rem;
-}
-
-td.logo {
-  padding: 0;
-  line-height: 0;
+.footer {
+  position: absolute;
+  right: 0;
+  bottom: 0.625rem;
+  left: 0;
+  color: #64748b; /* Light version of --p-text-muted-color. */
+  font-size: 0.75rem;
+  font-variant-numeric: tabular-nums;
   text-align: center;
 }
 
-.version {
-  text-align: right;
+@media (prefers-color-scheme: dark) {
+  .splash {
+    border-color: #3f3f46; /* Dark version of --p-content-border-color. */
+    background-color: #18181b; /* Dark version of --p-content-background. */
+  }
+
+  .pattern {
+    /**
+     * Dark version of --p-text-color.
+     */
+    background-image: radial-gradient(rgb(255 255 255 / 18%) 1px, transparent 1px);
+  }
+
+  .footer {
+    color: #a1a1aa; /* Dark version of --p-text-muted-color. */
+  }
 }

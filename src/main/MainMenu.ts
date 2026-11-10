@@ -10,6 +10,8 @@ let enabledMenu: electron.Menu | null = null;
 let disabledMenu: electron.Menu | null = null;
 let recentFilePaths: string[] = [];
 let hasFiles = false;
+let canSave = false;
+let canSaveAs = false;
 let menuEnabled = false;
 // Note: our main menu is disabled until our renderer enables it (see MainWindow's constructor).
 
@@ -97,14 +99,14 @@ export const enableDisableMainMenu = (enable: boolean): void => {
       label: 'Open...',
       accelerator: 'CmdOrCtrl+O',
       click: () => {
-        mainWindow?.open();
+        mainWindow?.showOpenDialog();
       }
     });
     fileSubMenu.push({
-      label: 'Open Remote...',
+      label: 'Open Location...',
       accelerator: 'CmdOrCtrl+Shift+O',
       click: () => {
-        mainWindow?.send('open-remote');
+        mainWindow?.send('open-location');
       }
     });
     fileSubMenu.push({
@@ -125,7 +127,11 @@ export const enableDisableMainMenu = (enable: boolean): void => {
       label: 'Most Recent',
       accelerator: 'CmdOrCtrl+Shift+T',
       click: () => {
-        mainWindow?.send('open', recentFilePaths[0]);
+        const filePath = recentFilePaths[0];
+
+        if (filePath) {
+          mainWindow?.openFile(filePath);
+        }
       },
       enabled: recentFilePaths.length > 0
     });
@@ -137,7 +143,7 @@ export const enableDisableMainMenu = (enable: boolean): void => {
         fileReopenSubMenu.push({
           label: filePath,
           click: () => {
-            mainWindow?.send('open', filePath);
+            mainWindow?.openFile(filePath);
           }
         });
       });
@@ -157,6 +163,25 @@ export const enableDisableMainMenu = (enable: boolean): void => {
       id: 'fileReopen',
       label: 'Reopen',
       submenu: fileReopenSubMenu
+    });
+    fileSubMenu.push({ type: 'separator' });
+    fileSubMenu.push({
+      id: 'fileSave',
+      label: 'Save',
+      accelerator: 'CmdOrCtrl+S',
+      click: () => {
+        mainWindow?.send('save');
+      },
+      enabled: canSave
+    });
+    fileSubMenu.push({
+      id: 'fileSaveAs',
+      label: 'Save As...',
+      accelerator: 'CmdOrCtrl+Shift+S',
+      click: () => {
+        mainWindow?.send('save-as');
+      },
+      enabled: canSaveAs
     });
     fileSubMenu.push({ type: 'separator' });
     fileSubMenu.push({
@@ -318,6 +343,23 @@ export const enableDisableFileCloseAndCloseAllMenuItems = (enable: boolean): voi
     if (fileCloseMenu && fileCloseAllMenu) {
       fileCloseMenu.enabled = hasFiles;
       fileCloseAllMenu.enabled = hasFiles;
+    }
+  }
+};
+
+export const enableDisableFileSaveAndSaveAsMenuItems = (enableSave: boolean, enableSaveAs: boolean): void => {
+  // Note: same as for enableDisableFileCloseAndCloseAllMenuItems().
+
+  canSave = enableSave;
+  canSaveAs = enableSaveAs;
+
+  if (enabledMenu) {
+    const fileSaveMenu = enabledMenu.getMenuItemById('fileSave');
+    const fileSaveAsMenu = enabledMenu.getMenuItemById('fileSaveAs');
+
+    if (fileSaveMenu && fileSaveAsMenu) {
+      fileSaveMenu.enabled = canSave;
+      fileSaveAsMenu.enabled = canSaveAs;
     }
   }
 };

@@ -5,6 +5,7 @@
         v-model="discreteValue"
         :options="possibleValues"
         optionLabel="name"
+        :ariaLabel="name"
         @change="selectChange"
         :appendTo="appendTarget"
         class="w-full"
@@ -17,7 +18,7 @@
         type="button"
         :disabled="atDefaultValue"
         :tabindex="-1"
-        :title="`Reset to ${defaultPossibleValue.name}`"
+        v-hint="`Reset to ${defaultPossibleValue.name}`"
         @mousedown.prevent
         @click="selectReset"
       >
@@ -41,7 +42,11 @@
       @atDefaultValueChange="(atDefaultValue: boolean) => emit('atDefaultValueChange', name, atDefaultValue)"
     />
     <div class="slider relative mt-3"
+      :class="{ 'slider-handle-focused-using-pointer': sliderHandleFocusedUsingPointer }"
+      @pointerdown.capture="onSliderPointerDown"
       @mousedown.capture="onSliderMouseDown"
+      @keydown.capture="onSliderKeyDown"
+      @focusout="onSliderFocusOut"
       @dblclick="onSliderDoubleClick">
       <Slider v-model="value" class="w-full"
         :min="minimumValue" :max="maximumValue" :step="compStepValue"
@@ -59,6 +64,7 @@
 import * as vue from 'vue';
 
 import { LONG_DELAY } from '../../common/constants';
+import { vHint } from '../../common/hint';
 import * as vueCommon from '../../common/vueCommon';
 import type * as locApi from '../../libopencor/locApi';
 
@@ -331,15 +337,56 @@ const sliderChange = (newValue: number | number[]) => {
   }
 };
 
+// Keep track of whether our slider's handle has been focused using a pointer, in which case it shouldn't get a focus
+// ring until a key that may be used with our slider is pressed (see onSliderKeyDown()).
+// Note: PrimeVue's Slider focuses its handle programmatically when it starts being dragged, i.e. from its mousedown (or
+//       touchstart) handler, in which case Chromium (and therefore Electron) considers that our handle has been focused
+//       using the keyboard, i.e. that it should get a focus ring. Focusing our handle ourselves beforehand using
+//       focus({ focusVisible: false }) would prevent this, but our handle would then never get a focus ring, even if a
+//       key was then pressed, hence we hide its focus ring ourselves (see .slider-handle-focused-using-pointer below).
+
+const sliderHandleFocusedUsingPointer = vue.ref<boolean>(false);
+
+const isSliderHandle = (target: EventTarget | null): boolean => {
+  return target instanceof Element && target.closest('.p-slider-handle') !== null;
+};
+
+const onSliderPointerDown = (event: PointerEvent): void => {
+  if (isSliderHandle(event.target)) {
+    sliderHandleFocusedUsingPointer.value = true;
+  }
+};
+
+// A key is pressed while our slider's handle has the focus, in which case it should get a focus ring, unless that key
+// is only a modifier key (e.g., Shift or Cmd) or is used with Cmd, Ctrl, or Alt (e.g., Cmd+C), i.e. unless it cannot be
+// used with our slider.
+// Note: this is unlike a Web browser, which gives a focus ring to an element that was focused using a pointer as soon
+//       as any key is pressed, including a modifier key, in which case our handle would, for instance, get a focus ring
+//       when people press Cmd to switch to another application using Cmd+Tab or press Shift while dragging our slider.
+
+const MODIFIER_KEYS = ['Alt', 'AltGraph', 'CapsLock', 'Control', 'Fn', 'FnLock', 'Hyper', 'Meta', 'Shift', 'Super'];
+
+const onSliderKeyDown = (event: KeyboardEvent): void => {
+  if (!MODIFIER_KEYS.includes(event.key) && !event.altKey && !event.ctrlKey && !event.metaKey) {
+    sliderHandleFocusedUsingPointer.value = false;
+  }
+};
+
+// Our slider's handle loses the focus, unless it is only because our window has lost the focus (in which case our
+// handle is still the active element), since it will then get the focus back (and, without us, a focus ring) once our
+// window regains the focus.
+
+const onSliderFocusOut = (event: FocusEvent): void => {
+  if (event.target !== document.activeElement) {
+    sliderHandleFocusedUsingPointer.value = false;
+  }
+};
+
 // Reset our scalar value when double-clicking on our slider's handle.
 // Note: the first click of a double click on our slider's bar moves our slider's handle under the mouse pointer, so we
 //       only reset our scalar value if the double click started on our slider's handle.
 
 let sliderDoubleClickStartedOnHandle = false;
-
-const isSliderHandle = (target: EventTarget | null): boolean => {
-  return target instanceof Element && target.closest('.p-slider-handle') !== null;
-};
 
 const onSliderMouseDown = (event: MouseEvent) => {
   if (event.detail === 1) {
@@ -360,6 +407,15 @@ const onSliderDoubleClick = (event: MouseEvent) => {
 </script>
 
 <style scoped>
+/**
+ * Our slider's handle when it has been focused using a pointer (see sliderHandleFocusedUsingPointer).
+ */
+
+.slider-handle-focused-using-pointer :deep(.p-slider-handle:focus-visible) {
+  box-shadow: none;
+  outline: none;
+}
+
 /**
  * Our drop-down button is as wide as the spin buttons of InputScientificNumberWidget and, like them, is separated from
  * our value by a divider.

@@ -44,5 +44,5 @@ export const downloadLibopencorJsIfNeeded = async (destDir: string): Promise<voi
 
   const stats = fs.statSync(destFile);
 
-  console.log(`Downloaded libopencor.js (${(stats.size / 1024).toFixed(0)} KB) to ${destFile}.`);
+  console.log(`Downloaded libopencor.js (${(stats.size / 1000).toFixed(0)} kB) to ${destFile}.`);
 };

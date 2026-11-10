@@ -1,10 +1,11 @@
 import electron from 'electron';
 import { promises as fs } from 'node:fs';
+import os from 'node:os';
 
 import loc from '../../dist/libOpenCOR/Release/libOpenCOR.node';
 
 import type { OpenCORTheme } from '../renderer/index';
-import type { ISettings } from '../renderer/src/common/common';
+import type { ISettings, ISystemDetails } from '../renderer/src/common/common';
 
 // A helper function to listen to a channel from the main process.
 // Note: it returns a function to stop listening to that channel so that a listener can be removed (e.g., when the
@@ -72,7 +73,7 @@ retrieveOperatingSystem()
   });
 
 // Some bridging between our main process and renderer process.
-// Note: this must be in sync with src/electronApi.ts.
+// Note: this must be in sync with src/renderer/src/common/electronApi.ts.
 
 electron.contextBridge.exposeInMainWorld('electronApi', {
   // Some general methods.
@@ -82,35 +83,75 @@ electron.contextBridge.exposeInMainWorld('electronApi', {
 
     return _operatingSystem || defaultOperatingSystem;
   },
+  systemDetails: (): ISystemDetails => {
+    // Return some details about our system (see AboutDialog.vue).
+    // Note: os.cpus() may return an empty array (e.g., on some Linux systems where /proc is not available).
+
+    const cpus = os.cpus();
+
+    return {
+      cpuModel: cpus[0]?.model.trim() ?? '',
+      logicalCoreCount: cpus.length,
+      totalMemory: os.totalmem(),
+      electronVersion: process.versions.electron,
+      chromiumVersion: process.versions.chrome
+    };
+  },
 
   // Renderer process asking the main process to do something for it.
 
   applyTheme: (theme: OpenCORTheme) => electron.ipcRenderer.invoke('apply-theme', theme),
+  canSaveFile: (filePath: string): Promise<boolean> => electron.ipcRenderer.invoke('can-save-file', filePath),
   checkForUpdates: (atStartup: boolean) => electron.ipcRenderer.invoke('check-for-updates', atStartup),
+  closeConfirmed: () => electron.ipcRenderer.invoke('close-confirmed'),
+  closeRequestReceived: () => electron.ipcRenderer.invoke('close-request-received'),
   clearGitHubCache: (): Promise<void> => electron.ipcRenderer.invoke('clear-github-cache'),
   deleteGitHubAccessToken: (): Promise<boolean> => electron.ipcRenderer.invoke('delete-github-access-token'),
+  disallowSavingFile: (filePath: string) => electron.ipcRenderer.invoke('disallow-saving-file', filePath),
   downloadAndInstallUpdate: () => electron.ipcRenderer.invoke('download-and-install-update'),
   enableDisableMainMenu: (enable: boolean) => electron.ipcRenderer.invoke('enable-disable-main-menu', enable),
   enableDisableFileCloseAndCloseAllMenuItems: (enable: boolean) =>
     electron.ipcRenderer.invoke('enable-disable-file-close-and-close-all-menu-items', enable),
+  enableDisableFileSaveAndSaveAsMenuItems: (enableSave: boolean, enableSaveAs: boolean) =>
+    electron.ipcRenderer.invoke('enable-disable-file-save-and-save-as-menu-items', enableSave, enableSaveAs),
   fileClosed: (filePath: string) => electron.ipcRenderer.invoke('file-closed', filePath),
   fileIssue: (filePath: string, canonicalFilePath: string) =>
     electron.ipcRenderer.invoke('file-issue', filePath, canonicalFilePath),
   fileOpened: (filePath: string, canonicalFilePath: string) =>
     electron.ipcRenderer.invoke('file-opened', filePath, canonicalFilePath),
-  filePath: (file: File) => electron.webUtils.getPathForFile(file),
+  filePath: (file: File) => {
+    // Return the path of the given file, which is only known if the user dropped or selected it, in which case our
+    // renderer may save it (see canSaveFile() in src/main/MainWindow.ts).
+    // Note: our renderer can only use our IPC channels through what we expose here (since its context is isolated), and
+    //       a Web page cannot create a file that has a path, so our renderer cannot get to save any file that it wants.
+
+    const res = electron.webUtils.getPathForFile(file);
+
+    if (res) {
+      void electron.ipcRenderer.invoke('allow-saving-dropped-file', res);
+    }
+
+    return res;
+  },
   fileSelected: (filePath: string) => electron.ipcRenderer.invoke('file-selected', filePath),
+  filesModified: (filePaths: string[]) => electron.ipcRenderer.invoke('files-modified', filePaths),
   filesOpened: (filePaths: string[]) => electron.ipcRenderer.invoke('files-opened', filePaths),
-  installUpdateAndRestart: () => electron.ipcRenderer.invoke('install-update-and-restart'),
+  installUpdateAndRestart: (): Promise<boolean> => electron.ipcRenderer.invoke('install-update-and-restart'),
   loadGitHubAccessToken: (): Promise<string | null> => electron.ipcRenderer.invoke('load-github-access-token'),
   loadSettings: (): Promise<ISettings> => electron.ipcRenderer.invoke('load-settings'),
   recentFilePathCanonicalised: (filePath: string, canonicalFilePath: string) =>
     electron.ipcRenderer.invoke('recent-file-path-canonicalised', filePath, canonicalFilePath),
   rendererReady: () => electron.ipcRenderer.invoke('renderer-ready'),
+  reopenRecentFile: (filePath: string) => electron.ipcRenderer.invoke('reopen-recent-file', filePath),
   resetAll: () => electron.ipcRenderer.invoke('reset-all'),
+  saveFile: (filePath: string, contents: Uint8Array): Promise<void> =>
+    electron.ipcRenderer.invoke('save-file', filePath, contents),
+  saveFileAs: (defaultFilePath: string): Promise<string | null> =>
+    electron.ipcRenderer.invoke('save-file-as', defaultFilePath),
   saveGitHubAccessToken: (token: string): Promise<boolean> =>
     electron.ipcRenderer.invoke('save-github-access-token', token),
   saveSettings: (settings: ISettings) => electron.ipcRenderer.invoke('save-settings', settings),
+  showOpenDialog: () => electron.ipcRenderer.invoke('show-open-dialog'),
 
   // Renderer process listening to the main process.
 
@@ -120,13 +161,18 @@ electron.contextBridge.exposeInMainWorld('electronApi', {
     onIpc('canonicalise-recent-file-paths', callback),
   onChangelog: (callback: () => void) => onIpc('changelog', callback),
   onCheckForUpdates: (callback: () => void) => onIpc('check-for-updates', callback),
+  onClearRecentFiles: (callback: () => void) => onIpc('clear-recent-files', callback),
   onEnableDisableUi: (callback: (enable: boolean) => void) => onIpc('enable-disable-ui', callback),
-  onOpen: (callback: (filePath: string) => void) => onIpc('open', callback),
-  onOpenRemote: (callback: () => void) => onIpc('open-remote', callback),
+  onOpenFile: (callback: (filePath: string) => void) => onIpc('open-file', callback),
+  onOpenLocation: (callback: () => void) => onIpc('open-location', callback),
   onOpenSampleLorenz: (callback: () => void) => onIpc('open-sample-lorenz', callback),
+  onRecentFiles: (callback: (filePaths: string[]) => void) => onIpc('recent-files', callback),
   onClose: (callback: () => void) => onIpc('close', callback),
   onCloseAll: (callback: () => void) => onIpc('close-all', callback),
+  onConfirmClose: (callback: () => void) => onIpc('confirm-close', callback),
   onResetAll: (callback: () => void) => onIpc('reset-all', callback),
+  onSave: (callback: () => void) => onIpc('save', callback),
+  onSaveAs: (callback: () => void) => onIpc('save-as', callback),
   onSelect: (callback: (filePath: string) => void) => onIpc('select', callback),
   onSettings: (callback: () => void) => onIpc('settings', callback),
   onUpdateAvailable: (callback: (version: string) => void) => onIpc('update-available', callback),
@@ -134,7 +180,9 @@ electron.contextBridge.exposeInMainWorld('electronApi', {
   onUpdateDownloaded: (callback: () => void) => onIpc('update-downloaded', callback),
   onUpdateDownloadError: (callback: (issue: string) => void) => onIpc('update-download-error', callback),
   onUpdateInstallError: (callback: (issue: string) => void) => onIpc('update-install-error', callback),
-  onUpdateDownloadProgress: (callback: (percent: number) => void) => onIpc('update-download-progress', callback),
+  onUpdateInstalling: (callback: () => void) => onIpc('update-installing', callback),
+  onUpdateDownloadProgress: (callback: (percent: number, transferred: number, total: number) => void) =>
+    onIpc('update-download-progress', callback),
   onUpdateNotAvailable: (callback: () => void) => onIpc('update-not-available', callback)
 });
 

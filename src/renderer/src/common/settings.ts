@@ -16,8 +16,8 @@ const defaultSettings = (): ISettings => {
 // Note #1: the loaded settings may be incomplete (e.g., if they were saved by an older version of OpenCOR or edited by
 //          hand), have values of the wrong type (e.g., "false" rather than false), or not even be an object, in which
 //          case we use our default settings for whatever is missing or of the wrong type.
-// Note #2: we keep the settings, and settings sections, for which we don't have a default value (e.g., settings saved by
-//          a newer version of OpenCOR).
+// Note #2: we keep the settings, and settings sections, for which we don't have a default value (e.g., settings saved
+//          by a newer version of OpenCOR).
 
 const withDefaultSettings = (settings: unknown): ISettings => {
   const loadedSettings = isObject(settings) ? settings : {};

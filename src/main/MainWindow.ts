@@ -1,12 +1,13 @@
 import electron from 'electron';
 import { autoUpdater, type ProgressInfo, type UpdateCheckResult } from 'electron-updater';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 
 import type { OpenCORTheme } from '../renderer/index';
-import { formatError, isDataUrlFileName, type ISettings, isUrl } from '../renderer/src/common/common';
-import { FULL_URI_SCHEME, LONG_DELAY } from '../renderer/src/common/constants';
-import { appImagePath, isMacOs, isPackaged } from '../renderer/src/common/electron';
+import { formatError, isDataUrlFileName, type ISettings, isUrl, sleep } from '../renderer/src/common/common';
+import { FULL_URI_SCHEME, LONG_DELAY, MAX_RECENT_FILES } from '../renderer/src/common/constants';
+import { appImagePath, isMacOs, isPackaged, isWindows } from '../renderer/src/common/electron';
 /* TODO: enable once our GitHub integration is fully ready.
 import { deleteGitHubAccessToken } from '../renderer/src/common/gitHubIntegration';
 */
@@ -14,7 +15,12 @@ import { deleteGitHubAccessToken } from '../renderer/src/common/gitHubIntegratio
 import icon from './assets/icon.png?asset';
 import { ApplicationWindow, backgroundColor } from './ApplicationWindow';
 import { electronConf, type IElectronConfState, takeElectronConfBackupFileName } from './index';
-import { enableDisableFileCloseAndCloseAllMenuItems, enableDisableMainMenu, updateReopenMenu } from './MainMenu';
+import {
+  enableDisableFileCloseAndCloseAllMenuItems,
+  enableDisableFileSaveAndSaveAsMenuItems,
+  enableDisableMainMenu,
+  updateReopenMenu
+} from './MainMenu';
 import type { SplashScreenWindow } from './SplashScreenWindow';
 
 autoUpdater.autoDownload = false;
@@ -33,7 +39,8 @@ export const canCheckForUpdates = (): boolean => {
   return _canCheckForUpdates;
 };
 
-// Keep track of the state of an update, i.e. whether it is being downloaded, has been downloaded, or is being installed.
+// Keep track of the state of an update, i.e. whether it is being downloaded, has been downloaded, or is being
+// installed.
 // Note: our renderer process may be reloaded while an update is being downloaded or installed (e.g., after it crashed),
 //       in which case we must not check for updates (e.g., at startup) since an issue with checking for updates could
 //       get forwarded as an issue with installing the update (see below) and the update could be offered (and
@@ -43,8 +50,24 @@ type UpdateState = 'idle' | 'downloading' | 'downloaded' | 'installing';
 
 let updateState: UpdateState = 'idle';
 let updateDownloadPercent = 0;
+let updateDownloadTransferred = 0;
+let updateDownloadTotal = 0;
 
 export const checkForUpdates = (atStartup: boolean): void => {
+  // An update has already been downloaded, but the user cancelled its installation (when asked whether to save the
+  // files that have been modified, see OpenCOR.vue), so let our renderer know about it again (if the user wants to
+  // check for updates), so that it can be installed.
+  // Note: we don't check for updates again since an issue with doing so would get forwarded as an issue with installing
+  //       the update (see below).
+
+  if (updateState === 'downloaded') {
+    if (!atStartup) {
+      resendUpdateState();
+    }
+
+    return;
+  }
+
   // Check for updates, if we can and if requested (i.e. at startup, if the user wants us to, or by the user), and if we
   // are not already dealing with an update.
 
@@ -73,8 +96,10 @@ export const checkForUpdates = (atStartup: boolean): void => {
 autoUpdater.on('download-progress', (info: ProgressInfo) => {
   if (updateState === 'downloading') {
     updateDownloadPercent = info.percent;
+    updateDownloadTransferred = info.transferred;
+    updateDownloadTotal = info.total;
 
-    MainWindow.instance?.send('update-download-progress', info.percent);
+    MainWindow.instance?.send('update-download-progress', info.percent, info.transferred, info.total);
   }
 });
 
@@ -89,6 +114,13 @@ autoUpdater.on('download-progress', (info: ProgressInfo) => {
 
 autoUpdater.on('error', (error: Error) => {
   if (updateState === 'downloaded' || updateState === 'installing') {
+    // Note: OpenCOR is not going to be quit after all if the update couldn't be installed, so we must (again) ask the
+    //       user whether to save the files that have been modified when we get closed (see installUpdateAndRestart()).
+
+    if (updateState === 'installing') {
+      MainWindow.instance?.requireCloseConfirmation();
+    }
+
     updateState = 'idle';
 
     MainWindow.instance?.send('update-install-error', formatError(error));
@@ -98,12 +130,15 @@ autoUpdater.on('error', (error: Error) => {
 export const downloadAndInstallUpdate = (): void => {
   updateState = 'downloading';
   updateDownloadPercent = 0;
+  updateDownloadTransferred = 0;
+  updateDownloadTotal = 0;
 
   autoUpdater
     .downloadUpdate()
     .then(() => {
       updateState = 'downloaded';
       updateDownloadPercent = 100;
+      updateDownloadTransferred = updateDownloadTotal;
 
       MainWindow.instance?.send('update-downloaded');
     })
@@ -114,35 +149,56 @@ export const downloadAndInstallUpdate = (): void => {
     });
 };
 
-export const installUpdateAndRestart = (): void => {
-  // Install the update and restart OpenCOR.
-  // Note: our renderer may ask us to install the update more than once (see resendUpdateState()), but electron-updater
-  //       must only be asked once (e.g., on macOS, it would otherwise install the update once Squirrel.Mac has fetched it
-  //       as many times as it was asked to).
+export const installUpdateAndRestart = (): boolean => {
+  // Install the update and restart OpenCOR, and return whether the update is being installed.
+  // Note #1: our renderer may ask us to install the update more than once (see resendUpdateState()), but
+  //          electron-updater must only be asked once (e.g., on macOS, it would otherwise install the update once
+  //          Squirrel.Mac has fetched it as many times as it was asked to).
+  // Note #2: the update may not be installable anymore (e.g., if an issue occurred since it was downloaded, see the
+  //          error listener above), in which case our renderer needs to know that OpenCOR is not going to be quit.
+
+  if (updateState === 'installing') {
+    return true;
+  }
 
   if (updateState !== 'downloaded') {
-    return;
+    return false;
   }
 
   updateState = 'installing';
 
+  // Note: our renderer only asks us to install the update once the user has had a chance to save the files that have
+  //       been modified, so we must not ask again when we get closed.
+
+  MainWindow.instance?.skipCloseConfirmation();
+
   autoUpdater.quitAndInstall(true, true);
+
+  return true;
 };
 
 const resendUpdateState = (): void => {
   // Let our renderer know about the update that is being downloaded or installed, if any.
   // Note: this is needed when our renderer has been reloaded (e.g., after it crashed), so that it can show the progress
-  //       of the update (and block its UI) and ask us to install the update once it has been downloaded (in case our
-  //       previous renderer didn't get a chance to do so).
+  //       of the update (and block its UI), ask us to install the update once it has been downloaded (in case our
+  //       previous renderer didn't get a chance to do so), or show that the update is being installed (and block its
+  //       UI) if we have already been asked to install it (in which case OpenCOR is about to be quit).
 
   if (updateState === 'idle') {
     return;
   }
 
-  MainWindow.instance?.send('update-download-progress', updateDownloadPercent);
+  MainWindow.instance?.send(
+    'update-download-progress',
+    updateDownloadPercent,
+    updateDownloadTransferred,
+    updateDownloadTotal
+  );
 
   if (updateState === 'downloaded') {
     MainWindow.instance?.send('update-downloaded');
+  } else if (updateState === 'installing') {
+    MainWindow.instance?.send('update-installing');
   }
 };
 
@@ -176,6 +232,11 @@ export const resetAll = (): void => {
   //       original arguments (e.g., --no-sandbox, which may be needed for OpenCOR to start at all) since, unlike by
   //       default, Electron doesn't relaunch us with them when we specify the path to relaunch.
 
+  // Note: our renderer only asks us to reset all once the user has had a chance to save the files that have been
+  //       modified, so we must not ask again when we get closed.
+
+  MainWindow.instance?.skipCloseConfirmation();
+
   const appImage = appImagePath();
 
   electron.app.relaunch(appImage ? { execPath: appImage, args: process.argv.slice(1) } : undefined);
@@ -188,9 +249,18 @@ export const resetAll = (): void => {
 
 let recentFilePaths: string[] = [];
 
+const recentFilePathsUpdated = (): void => {
+  // Let our Reopen menu and our renderer (which lists our most recent files on its start screen, see
+  // mainProcessRecentFilePaths in OpenCOR.vue) know about our (updated) recent file paths.
+
+  updateReopenMenu(recentFilePaths);
+
+  MainWindow.instance?.send('recent-files', [...recentFilePaths]);
+};
+
 const removeRecentFilePath = (filePath: string): boolean => {
   // Remove the given file path from our recent file paths and return whether it was removed (in which case our Reopen
-  // menu needs to be updated).
+  // menu and our renderer need to be updated, see recentFilePathsUpdated()).
 
   let res = false;
 
@@ -208,36 +278,77 @@ const removeRecentFilePath = (filePath: string): boolean => {
 export const clearRecentFiles = (): void => {
   recentFilePaths = [];
 
-  updateReopenMenu(recentFilePaths);
+  recentFilePathsUpdated();
+
+  // Let our renderer know that our recent files have been cleared, so that it can release the contents that it kept for
+  // the files that were opened using a data URL and then closed (see OpenCOR.addRecentFile()).
+
+  MainWindow.instance?.send('clear-recent-files');
+};
+
+// Note: a file opened using a data URL only exists in memory, in our renderer (see isDataUrlFileName()), so it can only
+//       be reopened during the current session and only as long as our renderer is not gone. Hence, we never save such
+//       a file as a recent file (see the constructor of MainWindow) and we forget about it when our renderer is gone
+//       (see onRenderProcessGone()).
+
+const persistentRecentFilePaths = (): string[] => {
+  return recentFilePaths.filter((filePath) => !isDataUrlFileName(filePath));
+};
+
+const forgetDataUrlRecentFilePaths = (): void => {
+  const filePaths = persistentRecentFilePaths();
+
+  if (filePaths.length !== recentFilePaths.length) {
+    recentFilePaths = filePaths;
+
+    recentFilePathsUpdated();
+  }
 };
 
 export const fileClosed = (filePath: string): void => {
-  // Make sure that the file was not opened using a data URL (see isDataUrlFileName()).
-
-  if (isDataUrlFileName(filePath)) {
-    return;
-  }
-
   removeRecentFilePath(filePath);
 
   recentFilePaths.unshift(filePath);
 
-  if (recentFilePaths.length > 10) {
-    recentFilePaths.length = 10;
+  if (recentFilePaths.length > MAX_RECENT_FILES) {
+    recentFilePaths.length = MAX_RECENT_FILES;
   }
 
-  updateReopenMenu(recentFilePaths);
+  recentFilePathsUpdated();
+};
+
+// Reopen the given recent file, i.e. as if it was reopened using our Reopen menu.
+// Note: we only reopen a file that is one of our recent files since our renderer (which asks us to reopen it, see
+//       onOpenRecentFileAction() in OpenCOR.vue) could otherwise use this to be allowed to save any file (see
+//       openFile()).
+
+export const reopenRecentFile = (filePath: string): void => {
+  if (recentFilePaths.includes(filePath)) {
+    MainWindow.instance?.openFile(filePath);
+  }
 };
 
 export const recentFilePathCanonicalised = (filePath: string, canonicalFilePath: string): void => {
   // Replace the given (non-canonical) file path with its canonical version in our recent file paths (see
   // MainWindow.rendererReady()), unless it is no longer there (e.g., if our Reopen menu got cleared in the meantime),
   // making sure that the canonical file path is only listed once.
+  // Note: the canonical file path is given to us by our renderer, so we only trust it if it is trusted anyway or if it
+  //       is the real path of the given file path (see isTrustedFilePath()). Otherwise, we keep the given file path.
 
   const index = recentFilePaths.indexOf(filePath);
 
   if (filePath === canonicalFilePath || index === -1) {
     return;
+  }
+
+  if (!isTrustedFilePath(canonicalFilePath)) {
+    try {
+      if (!path.isAbsolute(filePath) || fs.realpathSync.native(filePath) !== path.resolve(canonicalFilePath)) {
+        return;
+      }
+    } catch {
+      return;
+    }
   }
 
   recentFilePaths[index] = canonicalFilePath;
@@ -248,7 +359,7 @@ export const recentFilePathCanonicalised = (filePath: string, canonicalFilePath:
     }
   }
 
-  updateReopenMenu(recentFilePaths);
+  recentFilePathsUpdated();
 };
 
 // Note: for fileIssue() and fileOpened(), filePath is the path that was used to (try to) open the file, which may be
@@ -265,15 +376,15 @@ const removeRecentFilePaths = (filePath: string, canonicalFilePath: string): voi
   const canonicalFilePathRemoved = removeRecentFilePath(canonicalFilePath);
 
   if (filePathRemoved || canonicalFilePathRemoved) {
-    updateReopenMenu(recentFilePaths);
+    recentFilePathsUpdated();
   }
 };
 
 export const fileIssue = (filePath: string, canonicalFilePath: string): void => {
   removeRecentFilePaths(filePath, canonicalFilePath);
 
-  // A file couldn't be opened, possibly while reopening files during OpenCOR startup, in which case we need to make sure
-  // that it doesn't get selected and reopen the next file.
+  // A file couldn't be opened, possibly while reopening files during OpenCOR startup, in which case we need to make
+  // sure that it doesn't get selected and reopen the next file.
 
   MainWindow.instance?.fileOpenedOrNot(filePath, false);
 };
@@ -301,6 +412,208 @@ let selectedFilePath: string | null = null;
 
 export const fileSelected = (filePath: string): void => {
   selectedFilePath = filePath;
+};
+
+let modifiedFilePaths: string[] = [];
+
+export const filesModified = (filePaths: string[]): void => {
+  modifiedFilePaths = filePaths;
+};
+
+// Our renderer has asked the user whether to save the files that have been modified (see the constructor of MainWindow)
+// and the user didn't cancel, so we can now be closed.
+
+export const closeConfirmed = (): void => {
+  MainWindow.instance?.closeConfirmed();
+};
+
+// Our renderer has received our request to ask the user whether to save the files that have been modified (see the
+// constructor of MainWindow), so it is responding.
+
+export const closeRequestReceived = (): void => {
+  MainWindow.instance?.closeRequestReceived();
+};
+
+// Keep track of the local files that our renderer may save, determine whether it may save a given file or whether a
+// given file path that it gives us is to be trusted, and stop letting it save a file once that file has been closed.
+// Note #1: our renderer may be compromised (e.g., through some cross-site scripting), so we cannot let it save any file
+//          that it wants. Instead, it may only save a file that the user (or the operating system on their behalf)
+//          asked us to open (using our File|Open dialog, our File|Reopen menu, our command line, or the command line of
+//          another instance of OpenCOR), that the user dropped onto OpenCOR (see our preload script), that we reopened
+//          when starting OpenCOR, or that the user chose to save to using our File|Save As dialog. Any other local file
+//          (e.g., one that was opened using an OpenCOR action, which a Web page can trigger) can only be saved using
+//          our File|Save As dialog (see ContentsComponent.doSaveFile()).
+// Note #2: we reopen the files that our renderer tells us are open (when starting OpenCOR) and that it tells us have
+//          been closed (through our File|Reopen menu), and doing so lets our renderer save them. So, we only trust a
+//          local file path that our renderer gives us if it may save that file, so that a compromised renderer cannot
+//          get to save a file by having it reopened.
+// Note #3: our renderer may only save a file while it is open, so that it cannot save a file that has been closed
+//          should it get compromised afterwards (e.g., by a file opened later). So, it stops being able to save a file
+//          once it tells us that the file has been closed, couldn't be opened, or isn't open after all (e.g., if the
+//          user chose to save a file to it using our File|Save As dialog, but that file couldn't be saved to it, see
+//          ContentsComponent.doSaveFileAs()), and it cannot save any file once it is gone (see onRenderProcessGone()).
+//          It can save the file again once the user reopens it.
+// Note #4: our renderer refers to a file using the path that was used to open it, but tells us about the files that are
+//          open or that have been closed using their canonical path (see ContentsComponent.vue), which may be different
+//          (e.g., "/tmp/model.cellml" vs "/private/tmp/model.cellml" on macOS). So, we identify a file using its real
+//          path or, if it doesn't exist (yet), the real path of its folder followed by its name.
+
+const savableFilePaths = new Set<string>();
+
+const savableFilePath = (filePath: string): string => {
+  const res = path.resolve(filePath);
+
+  try {
+    return fs.realpathSync.native(res);
+  } catch {
+    try {
+      return path.join(fs.realpathSync.native(path.dirname(res)), path.basename(res));
+    } catch {
+      return res;
+    }
+  }
+};
+
+export const allowSavingFile = (filePath: string): void => {
+  if (path.isAbsolute(filePath)) {
+    savableFilePaths.add(savableFilePath(filePath));
+  }
+};
+
+export const disallowSavingFile = (filePath: string): void => {
+  if (path.isAbsolute(filePath)) {
+    savableFilePaths.delete(savableFilePath(filePath));
+  }
+};
+
+const disallowSavingAnyFile = (): void => {
+  savableFilePaths.clear();
+};
+
+export const canSaveFile = (filePath: string): boolean => {
+  return path.isAbsolute(filePath) && savableFilePaths.has(savableFilePath(filePath));
+};
+
+export const isTrustedFilePath = (filePath: string): boolean => {
+  return !path.isAbsolute(filePath) || canSaveFile(filePath);
+};
+
+// Save the given contents to the given (local) file, if our renderer may save it (see canSaveFile()).
+// Note #1: writing to a file truncates it first, so if the writing fails (e.g., because the disk is full), then the
+//          file is left partially written. So, instead, we write our contents to a temporary file next to the file and
+//          then replace the file with it, meaning that the file is either fully saved or left untouched. If the file is
+//          a symbolic link, then we replace the file it points to, so that the link is kept.
+// Note #2: replacing a file means that it gets the permissions of our temporary file, so we give it those of the file.
+//          Other metadata (e.g., owner, extended attributes, Windows ACLs) is not kept, though.
+// Note #3: we write to the file directly if it doesn't exist (so there is nothing to lose), if it is not a regular
+//          file, if it has hard links (which replacing it would break), if we cannot create a temporary file next to it
+//          (e.g., we can write to the file but not to its folder), or if we cannot replace it (e.g., the file is in a
+//          folder with the sticky bit set and belongs to someone else or, on Windows, another application has it open,
+//          hence we try a few times before giving up).
+
+const errorCode = (error: unknown): string | undefined => {
+  return (error as NodeJS.ErrnoException | null)?.code;
+};
+
+const REPLACE_ATTEMPTS = 5;
+const REPLACE_DELAY = 100;
+
+export const saveFile = async (filePath: string, contents: Uint8Array): Promise<void> => {
+  if (!canSaveFile(filePath)) {
+    throw new Error('the file can only be saved using File|Save As');
+  }
+
+  // Determine the file to save, i.e. the given file or, if it is a symbolic link, the file it points to.
+
+  let realFilePath: string;
+  let stats: fs.Stats;
+
+  try {
+    realFilePath = await fs.promises.realpath(filePath);
+    stats = await fs.promises.stat(realFilePath);
+  } catch (error: unknown) {
+    if (errorCode(error) === 'ENOENT') {
+      return fs.promises.writeFile(filePath, contents);
+    }
+
+    throw error;
+  }
+
+  if (!stats.isFile() || stats.nlink > 1) {
+    return fs.promises.writeFile(realFilePath, contents);
+  }
+
+  // Make sure that we can write to the file since we might otherwise be able to replace it even though we cannot write
+  // to it (e.g., a read-only file in a folder that we can write to on Linux/macOS).
+
+  await fs.promises.access(realFilePath, fs.constants.W_OK);
+
+  // Write our contents to a temporary file next to the file.
+  // Note: our temporary file is created with the permissions of the file, minus those removed by the umask, so we set
+  //       them explicitly, if we can (e.g., FAT file systems have no permissions).
+
+  const mode = stats.mode & 0o7777;
+  const tempFilePath = path.join(
+    path.dirname(realFilePath),
+    `.${path.basename(realFilePath)}.${crypto.randomBytes(4).toString('hex')}.tmp`
+  );
+  let fileHandle: fs.promises.FileHandle;
+
+  try {
+    fileHandle = await fs.promises.open(tempFilePath, 'wx', mode);
+  } catch (error: unknown) {
+    if (['EACCES', 'ENAMETOOLONG', 'EPERM'].includes(errorCode(error) ?? '')) {
+      return fs.promises.writeFile(realFilePath, contents);
+    }
+
+    throw error;
+  }
+
+  try {
+    try {
+      await fileHandle.writeFile(contents);
+      await fileHandle.chmod(mode).catch(() => undefined);
+      await fileHandle.sync();
+    } finally {
+      await fileHandle.close();
+    }
+
+    // Replace the file with our temporary file.
+
+    for (let attempt = 1; ; ++attempt) {
+      try {
+        await fs.promises.rename(tempFilePath, realFilePath);
+
+        return;
+      } catch (error: unknown) {
+        if (!['EACCES', 'EBUSY', 'EPERM'].includes(errorCode(error) ?? '')) {
+          throw error;
+        }
+
+        if (!isWindows() || attempt === REPLACE_ATTEMPTS) {
+          break;
+        }
+
+        await sleep(REPLACE_DELAY);
+      }
+    }
+  } catch (error: unknown) {
+    await fs.promises.rm(tempFilePath, { force: true }).catch(() => undefined);
+
+    throw error;
+  }
+
+  // We couldn't replace the file, so write to it directly.
+
+  await fs.promises.rm(tempFilePath, { force: true }).catch(() => undefined);
+
+  return fs.promises.writeFile(realFilePath, contents);
+};
+
+// Let the user choose where to save a file and return the chosen file path, or null if the user cancelled.
+
+export const saveFileAs = (defaultFilePath: string): Promise<string | null> => {
+  return MainWindow.instance?.saveAs(defaultFilePath) ?? Promise.resolve(null);
 };
 
 // Retrieve the files that are currently open and the file that is currently selected, so that they can be reopened and
@@ -410,8 +723,12 @@ export class MainWindow extends ApplicationWindow {
   private _splashScreenWindow: SplashScreenWindow | null = null;
   private _rendererReady = false;
   private _closing = false;
+  private _closeConfirmed = false;
+  private _closeRequestTimeoutId: NodeJS.Timeout | null = null;
+  private _notRespondingAbortController: AbortController | null = null;
   private _rendererGone = false;
   private _rendererGoneCount = 0;
+  private _openDialogShown = false;
   private _pendingArguments: string[] = [];
   private _recentFilePathsToCanonicalise: string[] = [];
   private _filesToReopen: IFilesToReopen | null = null;
@@ -447,6 +764,52 @@ export class MainWindow extends ApplicationWindow {
       }
     });
 
+    // Don't get closed (e.g., because OpenCOR is being quit) if some files have been modified, but ask our renderer to
+    // ask the user whether to save them, after which our renderer will close us (see closeConfirmed()), unless the
+    // user cancels.
+    // Note #1: this must be our first close listener since our other close listeners must ignore a close event that we
+    //          prevent (i.e. when we are not actually going to be closed).
+    // Note #2: preventing our closing also cancels the quitting of OpenCOR, if any, in which case we are not being
+    //          closed after all (see the before-quit listener below).
+    // Note #3: we don't keep track of whether we have already asked our renderer since it ignores our request if it is
+    //          already handling one (e.g., if the user tries to quit OpenCOR twice in a row). If it is asking the user
+    //          something else (e.g., whether to save a file that is being closed), then it cancels that question and
+    //          asks the user whether to save the files that have been modified instead.
+
+    this.on('close', (event) => {
+      if (this._closeConfirmed || !modifiedFilePaths.length) {
+        return;
+      }
+
+      event.preventDefault();
+
+      this._closing = false;
+
+      this.askToSaveModifiedFiles();
+    });
+
+    // Similarly, don't let the session end (i.e. when shutting down or restarting the system, or when logging off on
+    // Windows) if some files have been modified, but ask our renderer to ask the user whether to save them. Windows
+    // then lists OpenCOR as preventing the session from ending, letting the user either cancel the ending of the
+    // session or end it anyway (see the session-end listener below).
+    // Note #1: once the user has had a chance to save those files, our renderer closes us (see closeConfirmed()), i.e.
+    //          OpenCOR gets quit (even if the user cancelled the ending of the session in the meantime), after which
+    //          Windows can end the session, unless the user cancels.
+    // Note #2: Windows doesn't wait for anyone when the session must end (e.g., because the system is running out of
+    //          power), so there is no point in asking the user in that case.
+    // Note #3: we don't consider ourselves as being closed since the session may not end after all (see the
+    //          session-end listener below).
+
+    this.on('query-session-end', (event) => {
+      if (this._closeConfirmed || !modifiedFilePaths.length || event.reasons.includes('critical')) {
+        return;
+      }
+
+      event.preventDefault();
+
+      this.askToSaveModifiedFiles();
+    });
+
     // Set our dock icon (macOS only).
 
     if (!isPackaged() && isMacOs()) {
@@ -477,7 +840,7 @@ export class MainWindow extends ApplicationWindow {
 
     recentFilePaths = electronConf.get('app.files.recent');
 
-    updateReopenMenu(recentFilePaths);
+    recentFilePathsUpdated();
 
     // Handle our command line, which will effectively be done once our renderer is ready (see rendererReady()).
 
@@ -485,7 +848,11 @@ export class MainWindow extends ApplicationWindow {
 
     // Keep track of our settings unless we are resetting all.
 
-    this.on('close', () => {
+    this.on('close', (event) => {
+      if (event.defaultPrevented) {
+        return;
+      }
+
       if (_resetAll) {
         electronConf.clear();
       } else {
@@ -513,7 +880,7 @@ export class MainWindow extends ApplicationWindow {
 
         // Recent files.
 
-        electronConf.set('app.files.recent', recentFilePaths);
+        electronConf.set('app.files.recent', persistentRecentFilePaths());
 
         // Opened files and selected file.
         // Note: if our renderer is not ready, then either it crashed and we are being closed before it could be
@@ -651,22 +1018,33 @@ export class MainWindow extends ApplicationWindow {
 
     const RENDERER_GONE_GRACE_PERIOD = 1000;
 
-    this.once('close', () => {
-      this._closing = true;
+    this.on('close', (event) => {
+      if (!event.defaultPrevented) {
+        this._closing = true;
+      }
     });
 
-    electron.app.once('before-quit', () => {
+    // Note: we listen to every before-quit event (rather than only the first one) since quitting OpenCOR may get
+    //       cancelled (e.g., if the user cancels saving a modified file, see the constructor), in which case OpenCOR
+    //       may be quit again later.
+
+    electron.app.on('before-quit', () => {
       this._closing = true;
     });
 
     // Note: on Windows, before-quit doesn't get emitted when the session ends (i.e. when shutting down or restarting
     //       the system, or when logging off), and our renderer may get killed before we get closed, so we also rely on
     //       session-end. We don't rely on query-session-end though since the session may not end after all (e.g., if
-    //       another application prevents it from ending), in which case we would ignore our renderer crashing (see
+    //       we or another application prevent it from ending), in which case we would ignore our renderer crashing (see
     //       onRenderProcessGone()) for the rest of our lifetime.
 
     this.once('session-end', () => {
       this._closing = true;
+
+      // The session is ending (e.g., the user chose to end it even though we were preventing it from ending, see the
+      // query-session-end listener above), so we cannot prevent ourselves from being closed. So, don't even try.
+
+      this._closeConfirmed = true;
     });
 
     const loadingWasInterrupted = (error: unknown): boolean => {
@@ -754,9 +1132,19 @@ export class MainWindow extends ApplicationWindow {
   //       files that were open, the latter allowing them to break such a cycle.
 
   onRenderProcessGone(details: electron.RenderProcessGoneDetails): void {
+    // Our renderer is gone, so its files are no longer open and it cannot save them anymore (see canSaveFile()). Should
+    // our renderer be reloaded, it will be able to save the files that we ask it to reopen.
+
+    disallowSavingAnyFile();
+
+    // Our renderer is gone, so are the contents of the files that were opened using a data URL and then closed, i.e.
+    // those files cannot be reopened anymore.
+
+    forgetDataUrlRecentFilePaths();
+
     // Ignore our renderer being gone if we are being closed (e.g., because OpenCOR is being quit), whatever the reason.
-    // Indeed, our renderer will normally exit cleanly in that case, but it may also be killed (e.g., when logging off or
-    // shutting down the system) or crash while being torn down. Either way, there is nothing to recover since we are
+    // Indeed, our renderer will normally exit cleanly in that case, but it may also be killed (e.g., when logging off
+    // or shutting down the system) or crash while being torn down. Either way, there is nothing to recover since we are
     // going away, so we must not offer to reload OpenCOR.
     // Note: our renderer may also exit cleanly on its own (e.g., if the native libOpenCOR module calls exit(0)), in
     //       which case it is gone just as if it had crashed, so we handle it as such.
@@ -772,6 +1160,11 @@ export class MainWindow extends ApplicationWindow {
     this._rendererGone = true;
 
     ++this._rendererGoneCount;
+
+    // Stop waiting for our renderer to receive our request to ask the user whether to save the files that have been
+    // modified, if needed, since those files are lost anyway (see below).
+
+    this.stopWaitingForCloseRequestReceived();
 
     console.error(`OpenCOR: the renderer process is gone (${details.reason}, exit code ${details.exitCode}).`);
 
@@ -829,12 +1222,16 @@ export class MainWindow extends ApplicationWindow {
     //          we would otherwise save the files that were open at the time of the crash (see currentFilesToReopen())
     //          should OpenCOR be quit before any file gets opened, i.e. reopen the files that might have caused the
     //          crash the next time OpenCOR is started.
-    // Note #2: similarly, our reloaded renderer has no files to start with, so our File|Close and File|Close All menu
-    //          items must be disabled (they will get enabled again once a file gets (re)opened).
+    // Note #2: similarly, our reloaded renderer has no files to start with, so our File|Save, File|Save As, File|Close,
+    //          and File|Close All menu items must be disabled (they will get enabled again once a file gets
+    //          (re)opened). Also, the changes that were made to the files that were open are lost, so there is no point
+    //          in asking our reloaded renderer to save them when we get closed (see the constructor).
 
     filesOpened([]);
+    filesModified([]);
 
     enableDisableFileCloseAndCloseAllMenuItems(false);
+    enableDisableFileSaveAndSaveAsMenuItems(false, false);
 
     this._rendererReady = false;
     this._openedFilePaths = [];
@@ -892,9 +1289,9 @@ export class MainWindow extends ApplicationWindow {
       fileClosed(filesNotToReopen.selected);
     }
 
-    // Discard the files that we were going to reopen and the arguments that we were asked to handle, so that neither our
-    // reloaded renderer nor OpenCOR, the next time it is started, reopens the files that might have caused the crash
-    // or handles the arguments that our (crashed) renderer never handled.
+    // Discard the files that we were going to reopen and the arguments that we were asked to handle, so that neither
+    // our reloaded renderer nor OpenCOR, the next time it is started, reopens the files that might have caused the
+    // crash or handles the arguments that our (crashed) renderer never handled.
 
     this._filesToReopen = { opened: [], selected: '' };
     this._pendingArguments = [];
@@ -903,9 +1300,13 @@ export class MainWindow extends ApplicationWindow {
   // Our renderer is ready, so reopen previously opened files, if any, select the previously selected file, and handle
   // any arguments that we were asked to handle until now (e.g., our command line).
   // Note: our renderer may get reloaded (e.g., during development), in which case it will let us know again that it is
-  //       ready, but there is nothing more for us to do then.
+  //       ready, but there is nothing more for us to do then, except let it know about our recent file paths.
 
   rendererReady(): void {
+    // Let our (possibly reloaded) renderer know about our recent file paths (see recentFilePathsUpdated()).
+
+    this.send('recent-files', [...recentFilePaths]);
+
     if (this._rendererReady) {
       return;
     }
@@ -1013,7 +1414,7 @@ export class MainWindow extends ApplicationWindow {
       if (filePath) {
         this._reopeningFilePath = filePath;
 
-        this.send('open', filePath);
+        this.openFile(filePath);
 
         return;
       }
@@ -1050,9 +1451,19 @@ export class MainWindow extends ApplicationWindow {
       if (isAction(argument)) {
         this.send('action', argument.slice(FULL_URI_SCHEME.length));
       } else {
-        this.send('open', argument);
+        this.openFile(argument);
       }
     }
+  }
+
+  // Ask our renderer to open the given file, which it may then save (see canSaveFile()).
+  // Note: the given file was either given to us by the user (or the operating system on their behalf) or it is a file
+  //       that our renderer told us it had open or had closed, in which case it is trusted (see isTrustedFilePath()).
+
+  openFile(filePath: string): void {
+    allowSavingFile(filePath);
+
+    this.send('open-file', filePath);
   }
 
   // Enable/disable our UI.
@@ -1069,13 +1480,23 @@ export class MainWindow extends ApplicationWindow {
   //       handleArguments()). Similarly, we must not enable our UI in that case since our reloaded renderer will enable
   //       it once it is ready (see onRenderProcessGone()). Otherwise, we must enable our UI, even if our renderer isn't
   //       ready, i.e. if its initialisation failed (in which case it never tells us that it is ready), or our UI would
-  //       remain disabled.
+  //       remain disabled. Also, our renderer may ask us to show our open dialog (see onOpenAction() in OpenCOR.vue)
+  //       while it is already shown (e.g., if the user double clicks on the Open... action of our start screen before
+  //       our UI gets disabled), in which case we ignore the request.
 
-  open(): void {
+  showOpenDialog(): void {
+    if (this._openDialogShown) {
+      return;
+    }
+
+    this._openDialogShown = true;
+
     this.enableDisableUi(false);
 
     const rendererGoneCount = this._rendererGoneCount;
-    const enableUiIfRendererNotGone = (): void => {
+    const openDialogClosed = (): void => {
+      this._openDialogShown = false;
+
       if (this._rendererGoneCount === rendererGoneCount) {
         this.enableDisableUi(true);
       }
@@ -1088,12 +1509,168 @@ export class MainWindow extends ApplicationWindow {
       .then(({ filePaths }) => {
         this.handleArguments(filePaths);
 
-        enableUiIfRendererNotGone();
+        openDialogClosed();
       })
       .catch((error: unknown) => {
         console.warn('OpenCOR: failed to open file(s):', formatError(error));
 
-        enableUiIfRendererNotGone();
+        openDialogClosed();
       });
+  }
+
+  // Handle our renderer's File|Save As menu, i.e. let the user choose where to save a file and return the chosen file
+  // path, which our renderer may then save (see canSaveFile()), or null if the user cancelled.
+  // Note: same as for showOpenDialog() when it comes to the enabling of our UI.
+
+  async saveAs(defaultFilePath: string): Promise<string | null> {
+    this.enableDisableUi(false);
+
+    const rendererGoneCount = this._rendererGoneCount;
+
+    try {
+      const { canceled, filePath } = await electron.dialog.showSaveDialog({
+        defaultPath: defaultFilePath,
+        properties: ['createDirectory', 'showOverwriteConfirmation']
+      });
+
+      if (canceled || !filePath) {
+        return null;
+      }
+
+      allowSavingFile(filePath);
+
+      return filePath;
+    } finally {
+      if (this._rendererGoneCount === rendererGoneCount) {
+        this.enableDisableUi(true);
+      }
+    }
+  }
+
+  // Let ourselves be closed without asking our renderer to ask the user whether to save the files that have been
+  // modified (e.g., because it has already done so, see the constructor).
+
+  skipCloseConfirmation(): void {
+    this._closeConfirmed = true;
+  }
+
+  // Ask our renderer to ask the user whether to save the files that have been modified when we get closed (e.g.,
+  // because an update couldn't be installed after all, see skipCloseConfirmation()).
+
+  requireCloseConfirmation(): void {
+    this._closeConfirmed = false;
+  }
+
+  // Close ourselves now that the user has had a chance to save the files that have been modified (see the constructor).
+  // Note: OpenCOR gets quit once we are closed since we are its only window, so we don't need to know whether we were
+  //       being closed or OpenCOR was being quit.
+
+  closeConfirmed(): void {
+    this.skipCloseConfirmation();
+    this.close();
+  }
+
+  // Ask our renderer to ask the user whether to save the files that have been modified (see the constructor).
+
+  private askToSaveModifiedFiles(): void {
+    // Make sure that the user can see what our renderer is going to ask them (e.g., if OpenCOR is being quit from the
+    // Dock on macOS or the session is ending while we are minimised).
+
+    if (this.isMinimized()) {
+      this.restore();
+    }
+
+    this.show();
+
+    this.send('confirm-close');
+    this.waitForCloseRequestReceived();
+  }
+
+  // Make sure that our renderer receives our request to ask the user whether to save the files that have been modified
+  // (see the constructor). If it doesn't do so in time, then it is busy (e.g., running a long simulation) or hung, in
+  // which case the user would otherwise be unable to quit OpenCOR (other than by force quitting it). So, we let the
+  // user choose between waiting for our renderer and quitting OpenCOR without saving those files.
+  // Note #1: we don't wait again if we are already waiting or asking the user (e.g., if the user tries to quit OpenCOR
+  //          twice in a row).
+  // Note #2: our message box gets closed if our renderer receives our request after all, since it then asks the user
+  //          whether to save those files.
+  // Note #3: closing ourselves normally would require our renderer to respond (e.g., to handle beforeunload), so we
+  //          kill it first, making sure that we ignore it being gone (see onRenderProcessGone()).
+
+  private waitForCloseRequestReceived(): void {
+    if (this._closeRequestTimeoutId !== null || this._notRespondingAbortController) {
+      return;
+    }
+
+    const CLOSE_REQUEST_TIMEOUT = 3000;
+
+    this._closeRequestTimeoutId = setTimeout(() => {
+      this._closeRequestTimeoutId = null;
+
+      void this.askWhetherToQuitWithoutSaving();
+    }, CLOSE_REQUEST_TIMEOUT);
+  }
+
+  private async askWhetherToQuitWithoutSaving(): Promise<void> {
+    if (this._closeConfirmed || !modifiedFilePaths.length || this.isDestroyed()) {
+      return;
+    }
+
+    const WAIT = 0;
+    const QUIT_WITHOUT_SAVING = 1;
+
+    const abortController = new AbortController();
+    let choice = WAIT;
+
+    this._notRespondingAbortController = abortController;
+
+    try {
+      choice = (
+        await electron.dialog.showMessageBox(this, {
+          type: 'warning',
+          title: 'OpenCOR',
+          message: 'OpenCOR is not responding.',
+          detail:
+            'OpenCOR cannot ask you whether to save the files that have been modified. You can wait for it to respond or quit it without saving them, in which case your changes will be lost.',
+          buttons: ['Wait', 'Quit Without Saving'],
+          defaultId: WAIT,
+          cancelId: WAIT,
+          signal: abortController.signal
+        })
+      ).response;
+    } catch (error: unknown) {
+      console.warn('OpenCOR: failed to ask whether to quit without saving:', formatError(error));
+    } finally {
+      this._notRespondingAbortController = null;
+    }
+
+    if (
+      choice !== QUIT_WITHOUT_SAVING ||
+      abortController.signal.aborted ||
+      this._closeConfirmed ||
+      this.isDestroyed()
+    ) {
+      return;
+    }
+
+    this._closing = true;
+
+    this.skipCloseConfirmation();
+    this.webContents.forcefullyCrashRenderer();
+    this.close();
+  }
+
+  closeRequestReceived(): void {
+    this.stopWaitingForCloseRequestReceived();
+  }
+
+  private stopWaitingForCloseRequestReceived(): void {
+    if (this._closeRequestTimeoutId !== null) {
+      clearTimeout(this._closeRequestTimeoutId);
+
+      this._closeRequestTimeoutId = null;
+    }
+
+    this._notRespondingAbortController?.abort();
   }
 }

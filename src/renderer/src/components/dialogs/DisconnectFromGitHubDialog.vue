@@ -1,9 +1,9 @@
 <template>
-  <BaseDialog header="Disconnect from GitHub...">
-    <div class="mt-2 mb-4">You are about to disconnect from GitHub. Do you want to proceed?</div>
+  <BaseDialog header="Disconnect from GitHub">
+    <div class="mt-2 mb-4">You are about to disconnect from GitHub. Do you want to continue?</div>
     <template #footer>
-      <Button autofocus label="Yes" severity="danger" @click="$emit('yes')" />
-      <Button label="No" severity="secondary" @click="$emit('no')" />
+      <Button autofocus label="Disconnect" severity="danger" @click="$emit('yes')" />
+      <Button label="Cancel" severity="secondary" @click="$emit('no')" />
     </template>
   </BaseDialog>
 </template>
